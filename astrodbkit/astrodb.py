@@ -2,6 +2,7 @@
 # Author: Joe Filippazzo, jcfilippazzo@gmail.com
 
 import io, os, sys, itertools, urllib2, sqlite3 as sql, numpy as np, matplotlib.pyplot as plt, astropy.io.fits as pf, astropy.io.ascii as ii, astropy.table as at
+package_path = os.path.dirname(os.path.abspath(__file__))
 
 def clean_header(fitsPath):
   """
@@ -37,11 +38,11 @@ def create_database(dbpath):
     sources_table = "CREATE TABLE sources (id INTEGER PRIMARY KEY, ra REAL, dec REAL, designation TEXT, publication_id INTEGER, comments TEXT, shortname TEXT, names TEXT)"
     os.system("sqlite3 {} '{}'".format(dbpath,sources_table))
     if os.path.isfile(dbpath):
-      print "\nDatabase created! To load, run\n\ndb = BDdb.get_db('{}')\n\nThen run db.modify_table() method to create tables.".format(dbpath)
+      print "\nDatabase created! To load, run\n\ndb = astrodb.get_db('{}')\n\nThen run db.modify_table() method to create tables.".format(dbpath)
   else: print "Please provide a path and file name with a .db file extension, e.g. /Users/Me/Desktop/test.db"
 
 class get_db:
-  def __init__(self, dbpath='./Databases/bdnyc198.db'):
+  def __init__(self, dbpath=package_path+'/bdnyc198.db'):
     """
     Initialize the database.
     
@@ -414,56 +415,53 @@ class get_db:
     """
     try: q = "SELECT id,ra,dec,designation,unum,shortname,names FROM sources WHERE ra BETWEEN "+str(search[0]-0.01667)+" AND "+str(search[0]+0.01667)+" AND dec BETWEEN "+str(search[1]-0.01667)+" AND "+str(search[1]+0.01667)
     except TypeError: q = "SELECT id,ra,dec,designation,unum,shortname,components,companions,names FROM sources WHERE REPLACE(names,' ','') like '%"+search.replace(' ','')+"%' or designation like '%"+search+"%' or unum like '%"+search+"%' or shortname like '%"+search+"%'"
-    results = self.list(q).fetchall()
+    results = self.query(q)
     if results: 
       if len(results)==1: self.inventory(int(results[0][0]))
       else: print at.Table(np.asarray(results), names=['id','ra','dec','designation','unum','short','components','companions','names'])
     else: print "No objects found by {}".format(search)
       
-  def inventory(self, ID, verbose=True, plot=False, data=False):
+  def inventory(self, source_id, plot=False, return_data=False):
     """
     Prints a summary of all objects in the database. Input string or list of strings in **ID** or **unum** for specific objects.
     
     Parameters
     ----------
-    ID: (int, list)
-      The id or list of ids from the SOURCES table whose data across all tables is to be printed.
-    verbose: bool
-      Prints all data from all tables if True else prints a data summary.
+    source_id: int
+      The id from the SOURCES table whose data across all tables is to be printed.
     plot: bool
       Plots all spectra for the object.
-    data: bool
-      If ID is a list and data is True, returns the results of the SOURCES table search.
+    return_data: bool
+      Return the results.
       
     Returns
     -------
-    dict
-      If ID is a list and data is True, returns the results of the summary SQL query for all given source_id.
+    data_tables: dict
+      Returns a dictionary of astropy tables with the table name as the keys.
     
     """
-    if ID:
-      q = "SELECT sources.id, sources.shortname, sources.designation, sources.ra, sources.dec, (SELECT COUNT(*) FROM spectra WHERE spectra.source_id=sources.id), (SELECT COUNT(*) FROM spectra WHERE spectra.source_id=sources.id AND spectra.regime='OPT'), (SELECT COUNT(*) FROM spectra WHERE spectra.source_id=sources.id AND spectra.regime='NIR'), (SELECT COUNT(*) FROM photometry WHERE photometry.source_id=sources.id), (SELECT parallax from parallaxes WHERE parallaxes.source_id=sources.id), (SELECT parallax_unc from parallaxes WHERE parallaxes.source_id=sources.id), (SELECT spectral_type FROM spectral_types WHERE spectral_types.source_id=sources.id AND regime='OPT'), (SELECT spectral_type FROM spectral_types WHERE spectral_types.source_id=sources.id AND regime='IR'), (SELECT gravity from spectral_types WHERE spectral_types.source_id=sources.id) FROM sources"
-      IDS = ID if isinstance(ID,list) else [ID]
-      
-      if len(IDS)==1 and verbose:
-        for table in ['sources']+[t for t in zip(*self.list("SELECT * FROM sqlite_master WHERE type='table'").fetchall())[1] if t!='sources']:
-          columns, types = map(list,zip(*self.list("PRAGMA table_info({})".format(table)).fetchall())[1:3])
-          if 'source_id' in columns or table=='sources':
-            data = map(list, self.list("SELECT * FROM {} WHERE {}".format(table,'id={}'.format(ID) if table=='sources' else 'source_id={}'.format(ID))).fetchall())
-            for d in data+[columns,types]:
-              if table!='sources': d.pop(1)
-            if data: print ''; print table.upper(); print at.Table(np.asarray(data), names=columns)
-      else:
-        try:
-          D = self.list(q+' WHERE id IN ({})'.format("'"+"','".join(map(str,IDS))+"'")).fetchall()
-          if D:
-            print at.Table(np.asarray(D), names=['id','shortname','name','ra','dec','Spec Count','Optical','NIR','Phot Count','Pi','Pi_unc','OPT','IR','grav'])
-            if data: return D
-          else: print "No sources found{}.".format(' with id '+str(ID) if ID else '')
-        except IndexError: pass
+    data_tables = {}
+    try:
+      for table in ['sources']+[t for t in self.query("SELECT * FROM sqlite_master WHERE type='table'", unpack=True)[1] if t!='sources']:
+        
+        # Get the columns, pull out redundant ones, and query the table for this source's data
+        columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
+        columns, types = [z[np.where(np.logical_and(columns!='spectrum',columns!='source_id'))] for z in [columns,types]]
+        try: data = self.query("SELECT {} FROM {} WHERE {}".format(','.join(columns),table,'id={}'.format(source_id) if table=='sources' else 'source_id={}'.format(source_id)))
+        except: data = np.array([])
+        
+        # If there's data for this table, save it
+        if data.any(): 
+          data_table = at.Table(np.asarray(data), names=columns)
+          data_tables[table] = data_table
+          print ''; print table.upper(); print data_table
+        
       if plot:
-        for I in IDS:
-          for i in self.dict("SELECT * FROM spectra WHERE source_id={}".format(I)).fetchall(): self.plot_spectrum(i['id'])
+        for i in self.query("SELECT id FROM spectra WHERE source_id={}".format(source_id), unpack=True)[0]: self.plot_spectrum(i)
+    
+    except: print 'No source with id {}. Try db.identify() to search the database for a source_id.'.format(source_id)
+    
+    if return_data: return data_tables
 
   def lookup(self, table, ids=None, concatenate='', delim='/'):
     """
