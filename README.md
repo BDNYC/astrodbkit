@@ -15,6 +15,6 @@ from astrodbkit import astrodb
 db = astrodb.get_db()
 ```
 
-[Read the full documentation here](https://bdnyc.org/astrodbkit)
+[Read the full documentation here.](https://bdnyc.org/astrodbkit)
 
 ## Enjoy!
