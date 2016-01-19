@@ -267,7 +267,7 @@ class get_db:
       The name of the table to remove duplicates, blanks, and data without source attributions.
     
     """
-    (columns, types), dup, ignore, I = zip(*self.list("PRAGMA table_info({})".format(table)).fetchall())[1:3], 1, [], ''
+    (columns, types), dup, ignore, I = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3], 1, [], ''
     
     # Delete blank records, exact duplicates, or data without a source_id
     self.modify("DELETE FROM {0} WHERE ({1})".format(table, columns[1]+' IS NULL' if len(columns)==2 else (' IS NULL AND '.join(columns[1:])+' IS NULL')))
@@ -278,17 +278,15 @@ class get_db:
       # Define columns to check for uniqueness
       primary, secondary, ignore = ['flux','magnitude','parallax','spectral_type','proper_motion_ra','proper_motion_dec','radial_velocity'], ['band','regime'], []
       
-      # Find non-unique records and run BDdb.compare_records()
+      # Find non-unique records and run astrodb.compare_records()
       while dup:
         # Check SOURCES table for records with similar RA and Dec but different ids that are not companions or system components.
-        if table=='sources': dup = self.list(  "SELECT t1.*, t2.* FROM sources t1 JOIN sources t2 WHERE t1.id!=t2.id \
-                                                AND (t1.companions IS NULL OR (t1.companions IS NOT NULL AND t1.companions NOT LIKE '%' || CAST(t2.id AS TEXT) || '%')) AND (t2.companions IS NULL OR (t2.companions IS NOT NULL AND t2.companions NOT LIKE '%' || CAST(t1.id AS TEXT) || '%')) \
-                                                AND (t1.components IS NULL OR (t1.components IS NOT NULL AND t1.components NOT LIKE '%' || CAST(t2.id AS TEXT) || '%')) AND (t2.components IS NULL OR (t2.components IS NOT NULL AND t2.components NOT LIKE '%' || CAST(t1.id AS TEXT) || '%')) \
+        if table=='sources': dup = self.query(  "SELECT t1.*, t2.* FROM sources t1 JOIN sources t2 WHERE t1.id!=t2.id \
                                                 AND (t1.ra BETWEEN t2.ra-0.0007 AND t2.ra+0.0007) AND (t1.dec BETWEEN t2.dec-0.00077 AND t2.dec+0.0007)\
-                                                {}".format(' AND '+' AND '.join(['(t1.id NOT IN ({0}) AND t2.id NOT IN ({0}))'.format(','.join(map(str,i))) for i in ignore]) if ignore else '')).fetchone() 
+                                                {}".format(' AND '+' AND '.join(['(t1.id NOT IN ({0}) AND t2.id NOT IN ({0}))'.format(','.join(map(str,i))) for i in ignore]) if ignore else ''), fetch='one')
 
         # Check all other tables for records with identical primary and secondary column values but different ids.        
-        else: dup = self.list("SELECT t1.*, t2.* FROM {0} AS t1 JOIN {0} AS t2 ON t1.source_id=t2.source_id WHERE t1.id!=t2.id AND t1.{1}=t2.{1}{2}{3}".format(table, [c for c in columns if c in primary].pop(), ' AND t1.{0}=t2.{0}'.format([c for c in columns if c in secondary].pop()) if [c for c in columns if c in secondary] else '', ' AND '+' AND '.join(['(t1.id NOT IN ({0}) AND t2.id NOT IN ({0}))'.format(','.join(map(str,i))) for i in ignore]) if ignore else '')).fetchone()        
+        else: dup = self.query("SELECT t1.*, t2.* FROM {0} AS t1 JOIN {0} AS t2 ON t1.source_id=t2.source_id WHERE t1.id!=t2.id AND t1.{1}=t2.{1}{2}{3}".format(table, [c for c in columns if c in primary].pop(), ' AND t1.{0}=t2.{0}'.format([c for c in columns if c in secondary].pop()) if [c for c in columns if c in secondary] else '', ' AND '+' AND '.join(['(t1.id NOT IN ({0}) AND t2.id NOT IN ({0}))'.format(','.join(map(str,i))) for i in ignore]) if ignore else ''), fetch='one')        
         
         # Compare potential duplicates and prompt user for action on each
         if dup and dup[:len(dup)/2][0]!=dup[len(dup)/2:][0]:
