@@ -619,23 +619,29 @@ class get_db:
       Create a new table
     
     """
-    types[0] = 'INTEGER PRIMARY KEY'
+    # Make sure there is an 'id' and a 'source_id' column
+    goodtogo = True
+    if columns[0]!='id' or types[0].upper()!='INTEGER PRIMARY KEY': print "Column 1 must be 'id' with type 'INTEGER PRIMARY KEY'"; goodtogo = False
+    if table!='sources' and (columns[1]!='source_id' or types[1].upper()!='INTEGER'): print "Column 2 must be 'source_id' with type 'INTEGER'"; goodtogo = False
     
-    # If the table exists, modify the columns
-    if table in zip(*self.list("SELECT name FROM sqlite_master").fetchall())[0] and not new_table:
-      self.list("ALTER TABLE {0} RENAME TO TempOldTable".format(table))
-      self.list("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {}'.format(c,t) for c,t in zip(columns,types)])))
-      self.list("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable".format(table, ','.join([c for c in list(zip(*self.list("PRAGMA table_info(TempOldTable)").fetchall())[1]) if c in columns])))
-      self.list("DROP TABLE TempOldTable")
+    if goodtogo:
+      # If the table exists, modify the columns
+      if table in zip(*self.list("SELECT name FROM sqlite_master").fetchall())[0] and not new_table:
+        self.list("ALTER TABLE {0} RENAME TO TempOldTable".format(table))
+        self.list("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {}'.format(c,t) for c,t in zip(columns,types)])))
+        self.list("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable".format(table, ','.join([c for c in list(zip(*self.list("PRAGMA table_info(TempOldTable)").fetchall())[1]) if c in columns])))
+        self.list("DROP TABLE TempOldTable")
     
-    # If the table does not exist and new_tabe is True, create it
-    elif table not in zip(*self.list("SELECT name FROM sqlite_master").fetchall())[0] and new_table:
-      self.list("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {}'.format(c,t) for c,t in zip(columns,types)])))
+      # If the table does not exist and new_tabe is True, create it
+      elif table not in zip(*self.list("SELECT name FROM sqlite_master").fetchall())[0] and new_table:
+        self.list("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {}'.format(c,t) for c,t in zip(columns,types)])))
     
-    # Otherwise the table to be modified doesn't exist or the new table to add already exists, so do nothing
-    else:
-      if new_table: print 'Table {} already exists. Set *new_table=False to modify.'.format(table.upper())
-      else: print 'Table {} does not exist. Could not modify. Set *new_table=True to add a new table.'.format(table.upper())
+      # Otherwise the table to be modified doesn't exist or the new table to add already exists, so do nothing
+      else:
+        if new_table: print 'Table {} already exists. Set *new_table=False to modify.'.format(table.upper())
+        else: print 'Table {} does not exist. Could not modify. Set *new_table=True to add a new table.'.format(table.upper())
+        
+    else: print 'The {} table has not been modified. Please make sure your table columns and types are modified properly.'.format(table.upper())
     
   def output_spectrum(self, spectrum_id, filepath):
     """
