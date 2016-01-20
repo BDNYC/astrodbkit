@@ -544,7 +544,10 @@ class get_db:
               print at.Table(np.asarray([[repr(i) for i in d] for d in data]), names=columns)
             else:
               # Make temporary table copy so changes can be undone at any time
-              self.list("DROP TABLE IF EXISTS Backup_{0}".format(table)), self.list("ALTER TABLE {0} RENAME TO Backup_{0}".format(table)), self.list("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {}'.format(c,t) for c,t in zip(columns,types)]))), self.list("INSERT INTO {0} ({1}) SELECT {1} FROM Backup_{0}".format(table, ','.join(columns)))
+              self.modify("DROP TABLE IF EXISTS Backup_{0}".format(table))
+              self.modify("ALTER TABLE {0} RENAME TO Backup_{0}".format(table))
+              self.modify("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {}'.format(c,t) for c,t in zip(columns,types)])))
+              self.modify("INSERT INTO {0} ({1}) SELECT {1} FROM Backup_{0}".format(table, ','.join(columns)))
 
               # Create a dictionary of any reassigned ids from merged SOURCES tables and replace applicable source_ids in other tables.
               print "\nMerging {} tables.\n".format(table.upper())
@@ -655,7 +658,7 @@ class get_db:
       The path of the file to print the data to.
     
     """
-    data = self.query("SELECT * FROM spectra WHERE id={}".format(spectrum_id), fetch='one', DICT=True)
+    data = self.query("SELECT * FROM spectra WHERE id={}".format(spectrum_id), fetch='one', fmt='dict')
     if data:
       fn = '{}{}.txt'.format(filepath, data['filename'] or spectrum_id)
 
