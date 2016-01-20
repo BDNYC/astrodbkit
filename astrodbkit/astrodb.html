@@ -101,9 +101,9 @@
 </div>
           <div role="main" class="document">
             
-  <div class="section" id="astrodb-module">
-<h1>astrodb module<a class="headerlink" href="#astrodb-module" title="Permalink to this headline">¶</a></h1>
-<span class="target" id="module-astrodb"></span><dl class="function">
+  <div class="section" id="module-astrodb">
+<span id="astrodb-module"></span><h1>astrodb module<a class="headerlink" href="#module-astrodb" title="Permalink to this headline">¶</a></h1>
+<dl class="function">
 <dt id="astrodb.adapt_array">
 <code class="descclassname">astrodb.</code><code class="descname">adapt_array</code><span class="sig-paren">(</span><em>arr</em><span class="sig-paren">)</span><a class="headerlink" href="#astrodb.adapt_array" title="Permalink to this definition">¶</a></dt>
 <dd><p>Adapts a Numpy array into an ARRAY string to put into the database.</p>
@@ -497,7 +497,7 @@ Returns a dictionary of astropy tables with the table name as the keys.</p>
 
 <dl class="method">
 <dt id="astrodb.get_db.query">
-<code class="descname">query</code><span class="sig-paren">(</span><em>SQL</em>, <em>params=''</em>, <em>DICT=False</em>, <em>fetch='all'</em>, <em>unpack=False</em><span class="sig-paren">)</span><a class="headerlink" href="#astrodb.get_db.query" title="Permalink to this definition">¶</a></dt>
+<code class="descname">query</code><span class="sig-paren">(</span><em>SQL</em>, <em>params=''</em>, <em>fmt='array'</em>, <em>fetch='all'</em>, <em>unpack=False</em><span class="sig-paren">)</span><a class="headerlink" href="#astrodb.get_db.query" title="Permalink to this definition">¶</a></dt>
 <dd><p>Wrapper for cursors so data can be retrieved as a list or dictionary from same method</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -506,7 +506,7 @@ Returns a dictionary of astropy tables with the table name as the keys.</p>
 <tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
 <li><strong>SQL</strong> (<em>str</em>) &#8211; The SQL query to execute</li>
 <li><strong>params</strong> (<em>sequence</em>) &#8211; Mimicks the native parameter substitution of sqlite3</li>
-<li><strong>DICT</strong> (<em>bool</em>) &#8211; Returns the data as a dictionary if True, else a list</li>
+<li><strong>fmt</strong> (<em>str</em>) &#8211; Returns the data as a dictionary, list, array, or astropy.table given &#8216;dict&#8217;, &#8216;list&#8217;, &#8216;array&#8217;, &#8216;table&#8217;</li>
 <li><strong>unpack</strong> (<em>bool</em>) &#8211; Returns the transpose of the data</li>
 </ul>
 </td>
@@ -515,13 +515,32 @@ Returns a dictionary of astropy tables with the table name as the keys.</p>
 The result of the database query</p>
 </td>
 </tr>
-<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">(array,dict)</p>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">(array,dict,list,table)</p>
 </td>
 </tr>
 </tbody>
 </table>
 </dd></dl>
 
+</dd></dl>
+
+<dl class="function">
+<dt id="astrodb.pprint">
+<code class="descclassname">astrodb.</code><code class="descname">pprint</code><span class="sig-paren">(</span><em>data</em>, <em>names</em>, <em>title=''</em><span class="sig-paren">)</span><a class="headerlink" href="#astrodb.pprint" title="Permalink to this definition">¶</a></dt>
+<dd><p>Prints tables with a little bit &#8216;o formatting</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>data</strong> (<em>(sequence, dict)</em>) &#8211; The data to print in the table</li>
+<li><strong>names</strong> (<em>sequence</em>) &#8211; The column names</li>
+<li><strong>title</strong> (<em>str (optional)</em>) &#8211; The title of the table</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
 </dd></dl>
 
 </div>

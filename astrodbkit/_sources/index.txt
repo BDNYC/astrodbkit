@@ -41,7 +41,7 @@ This will also plot all available spectra for that source for visual inspection 
 Querying the Database
 =====================
 
-Now that you have the database at your fingertips, you’ll want to get some info out of it. To do this, you can pass SQL queries wrapped in double-quotes (") to the :py:meth:`~BDdb.get_db.query` method::
+Now that you have the database at your fingertips, you’ll want to get some info out of it. To do this, you can pass SQL queries wrapped in double-quotes (") to the :py:meth:`~astrodb.get_db.query` method::
 
     data = db.query( "SQL_query_goes_here" )
 

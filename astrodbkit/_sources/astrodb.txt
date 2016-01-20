@@ -1,5 +1,5 @@
 astrodb module
-===========
+==============
 
 .. automodule:: astrodb
    :members:
