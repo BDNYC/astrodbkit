@@ -138,13 +138,13 @@ class get_db:
 
     # If they are unique records (i.e. don't have an 'id' column value specified in the ascii file), add them as new records
     if insert:
-      print at.Table(np.asarray(insert), names=columns)
+      pprint(np.asarray(insert), names=columns)
       for i in insert: self.modify("INSERT INTO {} VALUES({})".format(table, ','.join('?'*len(columns))), i, verbose=False)
       print "{} new records added to the {} table.".format(len(insert),table.upper())
 
     # If they do have a specified 'id', update the fields for that record with the supplied information
     if update:
-      print at.Table(np.asarray([['-'*30,'-'*100],['[column name]','Display full record entry for that column without taking action'],['k','Keeps both records and assigns second one new id if necessary'],['r','Replaces all columns of first record with second record values'],['r [column name] [column name]...','Replaces specified columns of first record with second record values'],['c','Complete empty columns of first record with second record values where possible'],['[Enter]','Keep first record and delete second'],['abort','Abort merge of current table, undo all changes, and proceed to next table']]), names=['Command','Result'])
+      pprint(np.asarray([['-'*30,'-'*100],['[column name]','Display full record entry for that column without taking action'],['k','Keeps both records and assigns second one new id if necessary'],['r','Replaces all columns of first record with second record values'],['r [column name] [column name]...','Replaces specified columns of first record with second record values'],['c','Complete empty columns of first record with second record values where possible'],['[Enter]','Keep first record and delete second'],['abort','Abort merge of current table, undo all changes, and proceed to next table']]), names=['Command','Result'])
       for item in update:
         record = self.list("SELECT * FROM {} WHERE id={}".format(table, item[columns.index('id')])).fetchone()
         if record: self.compare_records(self, table, columns, record, item)
@@ -254,7 +254,7 @@ class get_db:
       # Add data to the database
       spec_id = sorted(list(set(range(1,self.list("SELECT max(id) FROM spectra").fetchone()[0]+2))-set(zip(*self.list("SELECT id FROM spectra").fetchall())[0])))[0]
       self.modify("INSERT INTO spectra VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (spec_id, source_id, spectrum, wavelength_units, flux_units, wavelength_order, regime, publication_id, obs_date, instrument_id, telescope_id, mode_id, filename, comment, header))
-      print at.Table(np.asarray([[spec_id, source_id, wavelength_units, flux_units, regime, publication_id, obs_date, instrument_id, telescope_id, mode_id, filename, comment]]), names=['spec_id','source_id','w_unit','f_unit','regime','pub_id','obs_date', 'inst_id', 'scope_id', 'mode_id', 'filename', 'comment'])
+      pprint(np.asarray([[spec_id, source_id, wavelength_units, flux_units, regime, publication_id, obs_date, instrument_id, telescope_id, mode_id, filename, comment]]), names=['spec_id','source_id','w_unit','f_unit','regime','pub_id','obs_date', 'inst_id', 'scope_id', 'mode_id', 'filename', 'comment'])
     except: print "Couldn't add spectrum {} to database.".format(filepath)
  
   def clean_up(self, table):
@@ -324,13 +324,13 @@ class get_db:
     """
     # Print the old and new records suspectred of being duplicates
     pold, pnew = ['{:.3g}...{:.3g}'.format(i[0],i[-1]) if isinstance(i, np.ndarray) else i for i in old], ['{:.3g}...{:.3g}'.format(i[0],i[-1]) if isinstance(i, np.ndarray) else i for i in new]
-    print at.Table(np.asarray([pold,pnew]), names=columns)
+    pprint(np.asarray([pold,pnew]), names=columns)
 
     # Print the command key
     replace = raw_input("Keep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(old[0]))
     while replace.lower() in columns or replace.lower()=='help':
-      if replace.lower() in columns: print at.Table(np.asarray([[i for idx,i in enumerate(pold) if idx in [0,columns.index(replace.lower())]],[i for idx,i in enumerate(pnew) if idx in [0,columns.index(replace.lower())]]]), names=['id',replace.lower()])    
-      elif replace.lower()=='help': print at.Table(np.asarray([['-'*30,'-'*100],['[column name]','Display full record entry for that column without taking action'],['k','Keep both records and assign second one new id if necessary'],['r','Replace all columns of first record with second record values'],['r [column name] [column name]...','Replace specified columns of first record with second record values'],['c','Complete empty columns of first record with second record values where possible'],['[Enter]','Keep first record and delete second'],['abort','Abort merge of current table, undo all changes, and proceed to next table']]), names=['Command','Result'])
+      if replace.lower() in columns: pprint(np.asarray([[i for idx,i in enumerate(pold) if idx in [0,columns.index(replace.lower())]],[i for idx,i in enumerate(pnew) if idx in [0,columns.index(replace.lower())]]]), names=['id',replace.lower()])    
+      elif replace.lower()=='help': pprint(np.asarray([['-'*30,'-'*100],['[column name]','Display full record entry for that column without taking action'],['k','Keep both records and assign second one new id if necessary'],['r','Replace all columns of first record with second record values'],['r [column name] [column name]...','Replace specified columns of first record with second record values'],['c','Complete empty columns of first record with second record values where possible'],['[Enter]','Keep first record and delete second'],['abort','Abort merge of current table, undo all changes, and proceed to next table']]), names=['Command','Result'])
       replace = raw_input("Keep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(old[0]))
 
     if replace and (all([i in list(columns)+options for i in replace.lower().split()]) or replace.lower().startswith('sql')):
@@ -416,7 +416,7 @@ class get_db:
     results = self.query(q)
     if results: 
       if len(results)==1: self.inventory(int(results[0][0]))
-      else: print at.Table(np.asarray(results), names=['id','ra','dec','designation','unum','short','components','companions','names'])
+      else: pprint(np.asarray(results), names=['id','ra','dec','designation','unum','short','components','companions','names'])
     else: print "No objects found by {}".format(search)
       
   def inventory(self, source_id, plot=False, return_data=False):
@@ -452,7 +452,7 @@ class get_db:
         if data.any(): 
           data_table = at.Table(np.asarray(data), names=columns)
           data_tables[table] = data_table
-          print ''; print table.upper(); print data_table
+          pprint(data_table, names=columns, title=table.upper())
         
       if plot:
         for i in self.query("SELECT id FROM spectra WHERE source_id={}".format(source_id), unpack=True)[0]: self.plot_spectrum(i)
@@ -520,7 +520,7 @@ class get_db:
       user, machine_name, date, modified_tables = raw_input('Please enter your name : '), socket.gethostname(), datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), []
       
       # Print instructions for user
-      print at.Table(np.asarray([['-'*30,'-'*100],['[column name]','Display full record entry for that column without taking action'],['k','Keeps both records and assigns second one new id if necessary'],['r','Replaces all columns of first record with second record values'],['r [column name] [column name]...','Replaces specified columns of first record with second record values'],['c','Complete empty columns of first record with second record values where possible'],['[Enter]','Keep first record and delete second'],['abort','Abort merge of current table, undo all changes, and proceed to next table']]), names=['Command','Result'])
+      pprint(np.asarray([['-'*30,'-'*100],['[column name]','Display full record entry for that column without taking action'],['k','Keeps both records and assigns second one new id if necessary'],['r','Replaces all columns of first record with second record values'],['r [column name] [column name]...','Replaces specified columns of first record with second record values'],['c','Complete empty columns of first record with second record values where possible'],['[Enter]','Keep first record and delete second'],['abort','Abort merge of current table, undo all changes, and proceed to next table']]), names=['Command','Result'])
       
       # Merge table by table, starting with SOURCES
       tables = tables or ['sources']+[t for t in zip(*self.list("SELECT * FROM sqlite_master WHERE name NOT LIKE '%Backup%' AND type='table'{}".format(" AND name IN ({})".format("'"+"','".join(tables)+"'") if tables else '')).fetchall())[1] if t!='sources']
@@ -541,7 +541,7 @@ class get_db:
 
           if data:
             if diff_only:
-              print at.Table(np.asarray([[repr(i) for i in d] for d in data]), names=columns)
+              pprint(np.asarray([[repr(i) for i in d] for d in data]), names=columns)
             else:
               # Make temporary table copy so changes can be undone at any time
               self.modify("DROP TABLE IF EXISTS Backup_{0}".format(table))
@@ -564,7 +564,7 @@ class get_db:
               # Insert unique conflicted records into master and run BDdb.clean_up()
               self.modify("INSERT INTO {} VALUES({})".format(table, ','.join(['?' for c in columns])), data)
               print "{} records added to {} table at '{}':".format(len(data), table, master)
-              print at.Table(np.asarray([[repr(i) for i in d] for d in data]), names=columns)
+              pprint(np.asarray([[repr(i) for i in d] for d in data]), names=columns)
               abort = self.clean_up(table)
           
               # Undo all changes to table if merge is aborted. Otherwise, push table changes to master.
@@ -878,3 +878,21 @@ sql.register_adapter(pf.header.Header, adapt_header)
 sql.register_converter("ARRAY", convert_array)
 sql.register_converter("HEADER", convert_header)
 sql.register_converter("SPECTRUM", convert_spectrum)
+
+def pprint(data, names, title=''):
+  """
+  Prints tables with a little bit 'o formatting
+  
+  Parameters
+  ----------
+  data: (sequence, dict)
+    The data to print in the table
+  names: sequence
+    The column names
+  title: str (optional)
+    The title of the table
+    
+  """
+  table = at.Table(data, names=names)
+  if title: print '\n'+title
+  ii.write(table, sys.stdout, Writer=ii.FixedWidthTwoLine, formats={'comments': '%.15s', 'comment': '%.15s', 'names': '%.20s'}, fill_values=[('None', '-')])
