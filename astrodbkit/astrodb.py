@@ -704,7 +704,7 @@ class get_db:
       except: print "Could not plot spectrum {}".format(spectrum_id)
     else: print "No spectrum {} in the SPECTRA table.".format(ID)
 
-  def query(self, SQL, params='', DICT=False, fetch='all', unpack=False):
+  def query(self, SQL, params='', fmt='array', fetch='all', unpack=False):
     """
     Wrapper for cursors so data can be retrieved as a list or dictionary from same method
     
@@ -714,22 +714,41 @@ class get_db:
       The SQL query to execute
     params: sequence
       Mimicks the native parameter substitution of sqlite3
-    DICT: bool
-      Returns the data as a dictionary if True, else a list
+    fmt: str
+      Returns the data as a dictionary, list, array, or astropy.table given 'dict', 'list', 'array', 'table'
     unpack: bool
       Returns the transpose of the data
       
     Returns
     -------
-    result: (array,dict)
+    result: (array,dict,list,table)
       The result of the database query
     """
     try:
+      # Restricy queries to SELECT and PRAGMA statements
       if SQL.lower().startswith('select') or SQL.lower().startswith('pragma'):
-        if DICT: return self.dict(SQL, params).fetchone() if fetch=='one' else self.dict(SQL, params).fetchall() 
+        
+        # Return a dictionary or astropy table
+        if fmt.lower() in ['dict','table']: 
+          # Get the results as a dictionary
+          result = self.dict(SQL, params).fetchone() if fetch=='one' else self.dict(SQL, params).fetchall()
+          
+          # Make an astropy table if necessary
+          if fmt.lower()=='table': result = at.Table(result)
+        
+        # Return an array or list
         else: 
+          # Get the results as an array by default
           result = np.asarray(self.list(SQL, params).fetchone() if fetch=='one' else self.list(SQL, params).fetchall())
-          return result.T if unpack else result
+          
+          # Unpack the results if necessary
+          if unpack: result = result.T
+          
+          # Turn back into list if necessary
+          if fmt.lower()=='list': result = list(result)
+        
+        return result
+          
       else:
         print 'Queries must begin with a SELECT or PRAGMA statement. For database modifications use self.modify() method.'  
     except IOError:
