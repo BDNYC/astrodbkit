@@ -414,9 +414,9 @@ class get_db:
     try: q = "SELECT id,ra,dec,designation,unum,shortname,names FROM sources WHERE ra BETWEEN "+str(search[0]-0.01667)+" AND "+str(search[0]+0.01667)+" AND dec BETWEEN "+str(search[1]-0.01667)+" AND "+str(search[1]+0.01667)
     except TypeError: q = "SELECT id,ra,dec,designation,unum,shortname,components,companions,names FROM sources WHERE REPLACE(names,' ','') like '%"+search.replace(' ','')+"%' or designation like '%"+search+"%' or unum like '%"+search+"%' or shortname like '%"+search+"%'"
     results = self.query(q)
-    if results: 
+    if results.any(): 
       if len(results)==1: self.inventory(int(results[0][0]))
-      else: pprint(np.asarray(results), names=['id','ra','dec','designation','unum','short','components','companions','names'])
+      else: pprint(results, names=['id','ra','dec','designation','unum','short','components','companions','names'])
     else: print "No objects found by {}".format(search)
       
   def inventory(self, source_id, plot=False, return_data=False):
@@ -893,6 +893,6 @@ def pprint(data, names, title=''):
     The title of the table
     
   """
-  table = at.Table(data, names=names)
+  table = at.Table(data, names=[i.replace('wavelength','wav').replace('publication','pub').replace('instrument','inst').replace('telescope','scope') for i in names])
   if title: print '\n'+title
-  ii.write(table, sys.stdout, Writer=ii.FixedWidthTwoLine, formats={'comments': '%.15s', 'comment': '%.15s', 'names': '%.20s'}, fill_values=[('None', '-')])
+  ii.write(table, sys.stdout, Writer=ii.FixedWidthTwoLine, formats={'comments': '%.15s', 'comment': '%.15s', 'names': '%.20s', 'header':'%.6s'}, fill_values=[('None', '-')])
