@@ -2,6 +2,8 @@
 # Author: Joe Filippazzo, jcfilippazzo@gmail.com
 
 import io, os, sys, itertools, urllib2, sqlite3 as sql, numpy as np, matplotlib.pyplot as plt, astropy.io.fits as pf, astropy.io.ascii as ii, astropy.table as at
+import warnings
+warnings.simplefilter('ignore')
 package_path = os.path.dirname(os.path.abspath(__file__))
 
 def clean_header(fitsPath):
@@ -241,6 +243,10 @@ class get_db:
         header = pf.PrimaryHDU(header=header).header
       else: header = None
 
+    # By default, the filepath is used as the location of the spectrum...
+    spectrum = filepath
+    
+    # ...but try to upload it!
     try:
       # Upload the file to AWS S3
       import boto3
@@ -250,8 +256,10 @@ class get_db:
 
       # Return the URL for database insertion
       spectrum = 'https://s3.amazonaws.com/bdnyc/{}'.format(filename)
-        
-      # Add data to the database
+    except: pass
+
+    # Add data to the database
+    try:    
       spec_id = sorted(list(set(range(1,self.list("SELECT max(id) FROM spectra").fetchone()[0]+2))-set(zip(*self.list("SELECT id FROM spectra").fetchall())[0])))[0]
       self.modify("INSERT INTO spectra VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (spec_id, source_id, spectrum, wavelength_units, flux_units, wavelength_order, regime, publication_id, obs_date, instrument_id, telescope_id, mode_id, filename, comment, header))
       pprint(np.asarray([[spec_id, source_id, wavelength_units, flux_units, regime, publication_id, obs_date, instrument_id, telescope_id, mode_id, filename, comment]]), names=['spec_id','source_id','w_unit','f_unit','regime','pub_id','obs_date', 'inst_id', 'scope_id', 'mode_id', 'filename', 'comment'])
@@ -419,7 +427,7 @@ class get_db:
       else: pprint(results, names=['id','ra','dec','designation','unum','short','components','companions','names'])
     else: print "No objects found by {}".format(search)
       
-  def inventory(self, source_id, plot=False, return_data=False):
+  def inventory(self, source_id, plot=False, fetch=False):
     """
     Prints a summary of all objects in the database. Input string or list of strings in **ID** or **unum** for specific objects.
     
@@ -429,7 +437,7 @@ class get_db:
       The id from the SOURCES table whose data across all tables is to be printed.
     plot: bool
       Plots all spectra for the object.
-    return_data: bool
+    fetch: bool
       Return the results.
       
     Returns
@@ -459,7 +467,7 @@ class get_db:
     
     except: print 'No source with id {}. Try db.identify() to search the database for a source_id.'.format(source_id)
     
-    if return_data: return data_tables
+    if fetch: return data_tables
 
   def lookup(self, table, ids=None, concatenate='', delim='/'):
     """
@@ -686,26 +694,21 @@ class get_db:
       The color used for the data
       
     """
-    i = self.dict("SELECT * FROM spectra WHERE id={}".format(spectrum_id)).fetchone()
+    i = self.query("SELECT * FROM spectra WHERE id={}".format(spectrum_id), fetch='one', fmt='dict')
     if i:
       try:
         if not overplot: 
-          plt.figure()
+          fig, ax = plt.subplots()
           plt.rc('text', usetex=False)
-          plt.grid(True)
-          plt.yscale('log', nonposy='clip')
-          plt.title('source_id = {}'.format(i['source_id']))
-          plt.figtext(0.15,0.88, '{}\n{}\n{}\n{}'.format(i['filename'],self.list("SELECT name FROM telescopes WHERE id={}".format(i['telescope_id'])).fetchone()[0] if i['telescope_id'] else '',self.list("SELECT name FROM instruments WHERE id={}".format(i['instrument_id'])).fetchone()[0] if i['instrument_id'] else '',i['obs_date']), verticalalignment='top')
-          plt.xlabel('[{}]'.format(i['wavelength_units']))
-          plt.ylabel('[{}]'.format(i['flux_units']))
-          plt.legend(loc=8, frameon=False)
-        wav, flx, err = i['spectrum']
-        plt.loglog(wav, flx, c=color, label='spec_id: {}'.format(i['id']))
+          ax.set_yscale('log', nonposy='clip'), plt.title('source_id = {}'.format(i['source_id']))
+          plt.figtext(0.15,0.88, '{}\n{}\n{}\n{}'.format(i['filename'],self.query("SELECT name FROM telescopes WHERE id={}".format(i['telescope_id']), fetch='one')[0] if i['telescope_id'] else '',self.query("SELECT name FROM instruments WHERE id={}".format(i['instrument_id']), fetch='one')[0] if i['instrument_id'] else '',i['obs_date']), verticalalignment='top')
+          ax.set_xlabel('[{}]'.format(i['wavelength_units'])), ax.set_ylabel('[{}]'.format(i['flux_units'])), ax.legend(loc=8, frameon=False)
+        ax.loglog(i['spectrum'][0], i['spectrum'][1], c=color, label='spec_id: {}'.format(i['id']))
         X, Y = plt.xlim(), plt.ylim()
-        try: plt.fill_between(wav, flx-err, flx+err, color='b', alpha=0.3), plt.xlim(X), plt.ylim(Y)
-        except TypeError: print 'No uncertainty array for spectrum {}'.format(spectrum_id)
-      except: print "Could not plot spectrum {}".format(spectrum_id)
-    else: print "No spectrum {} in the SPECTRA table.".format(ID)
+        try: ax.fill_between(i['spectrum'][0], i['spectrum'][1]-i['spectrum'][2], i['spectrum'][1]+i['spectrum'][2], color='b', alpha=0.3), ax.set_xlim(X), ax.set_ylim(Y)
+        except: print 'No uncertainty array for spectrum {}'.format(spectrum_id)
+      except IOErrors: print "Could not plot spectrum {}".format(spectrum_id); plt.close()
+    else: print "No spectrum {} in the SPECTRA table.".format(spectrum_id)
 
   def query(self, SQL, params='', fmt='array', fetch='all', unpack=False):
     """
@@ -835,12 +838,12 @@ def convert_header(header):
 
 def convert_spectrum(url):
   """
-  Converts a URL string stored in the database into a (W,F,E) sequence of arrays.
+  Converts a SPECTRUM data type stored in the database into a (W,F,E) sequence of arrays.
   
   Parameters
   ----------
   url: SPECTRUM
-    The CUNY Academic Works or AWS S3 URL of the file to be converted into arrays.
+    The URL or filepath of the file to be converted into arrays.
     
   Returns
   -------
@@ -850,25 +853,22 @@ def convert_spectrum(url):
   """
   spectrum = ''
   
-  # If it is a url, retrieve the data
   if isinstance(url,str):
+    
+    # For FITS files
     if url.endswith('.fits'):
-      try: spectrum = pf.open(url, cache=True)[0].data
+      try: spectrum = pf.getdata(url, cache=True)
       except: pass
+    
+    # For .txt files
     if url.endswith('.txt'): 
-      try: spectrum = np.genfromtxt(urllib2.urlopen(url), unpack=True)
+      try: 
+        spectrum = ii.read(url)
+        spectrum = np.array([np.asarray(spectrum.columns[n]) for n in [0,1,2]])
       except: pass
-    else:
-      pass
-  
-  # THIS BIT IS JUST IN CASE THE DATA IS NOT UPLOADED TO A SERVER
-  # If it is a [W,F,E] spectrum, just return it
-  elif isinstance(url, (list,np.ndarray,tuple)): 
-    try: spectrum = url
-    except: pass
 
-  if spectrum!='': return spectrum
-  else: print 'Could not retrieve spectrum at {}. Are you connected to the Internet?'.format(url)
+  if spectrum=='': print 'Could not retrieve spectrum at {}.'.format(url); return url
+  else: return spectrum
 
 # Register the adapters
 sql.register_adapter(np.ndarray, adapt_array)
@@ -896,3 +896,4 @@ def pprint(data, names, title=''):
   table = at.Table(data, names=[i.replace('wavelength','wav').replace('publication','pub').replace('instrument','inst').replace('telescope','scope') for i in names])
   if title: print '\n'+title
   ii.write(table, sys.stdout, Writer=ii.FixedWidthTwoLine, formats={'comments': '%.15s', 'comment': '%.15s', 'names': '%.20s', 'header':'%.6s'}, fill_values=[('None', '-')])
+  
