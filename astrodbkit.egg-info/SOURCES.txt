@@ -1,8 +1,0 @@
-setup.py
-astrodbkit/__init__.py
-astrodbkit/astrodb.py
-astrodbkit.egg-info/PKG-INFO
-astrodbkit.egg-info/SOURCES.txt
-astrodbkit.egg-info/dependency_links.txt
-astrodbkit.egg-info/requires.txt
-astrodbkit.egg-info/top_level.txt
