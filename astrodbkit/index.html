@@ -1,0 +1,237 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>Welcome to astrodbkit’s documentation! &mdash; astrodbkit 0.2.0 documentation</title>
+  
+
+  
+  
+
+  
+  <link href='https://fonts.googleapis.com/css?family=Lato:400,700,400italic,700italic|Roboto+Slab:400,700|Inconsolata:400,700&subset=latin,cyrillic' rel='stylesheet' type='text/css'>
+
+  
+  
+    
+
+  
+
+  
+  
+    <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  
+
+  
+
+  
+    <link rel="top" title="astrodbkit 0.2.0 documentation" href="#"/>
+        <link rel="next" title="astrodb module" href="astrodb.html"/> 
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/modernizr/2.6.2/modernizr.min.js"></script>
+
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-nav-search">
+        
+          <a href="#" class="fa fa-home"> astrodbkit</a>
+        
+        
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+        
+          
+          
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="astrodb.html">astrodb module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="votools.html">votools module</a></li>
+</ul>
+
+          
+        
+      </div>
+      &nbsp;
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" role="navigation" aria-label="top navigation">
+        <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+        <a href="#">astrodbkit</a>
+      </nav>
+
+
+      
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="#">Docs</a> &raquo;</li>
+      
+    <li>Welcome to astrodbkit&#8217;s documentation!</li>
+      <li class="wy-breadcrumbs-aside">
+        
+          <a href="_sources/index.txt" rel="nofollow"> View page source</a>
+        
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document">
+            
+  <div class="section" id="welcome-to-astrodbkit-s-documentation">
+<h1>Welcome to astrodbkit&#8217;s documentation!<a class="headerlink" href="#welcome-to-astrodbkit-s-documentation" title="Permalink to this headline">¶</a></h1>
+<p>The BDNYC Database is an advanced SQL relational database of published spectra, photometry and astrometry for over 1300 very low-mass stars, brown dwarfs and planetary mass objects.</p>
+<p>This documentation describes a tool kit of classes, methods and functions useful for CRUD operations and analysis of data from The BDNYC Data Archive.</p>
+</div>
+<div class="section" id="getting-started">
+<h1>Getting Started<a class="headerlink" href="#getting-started" title="Permalink to this headline">¶</a></h1>
+<p>To install, just do:</p>
+<div class="highlight-python"><div class="highlight"><pre>pip install astrodbkit
+</pre></div>
+</div>
+<p>This package includes the initial release of the BDNYC Database, which contains the astrometry, photometry and spectra for the 198 objects in the <a class="reference external" href="http://adslabs.org/adsabs/abs/2015ApJ...810..158F/">Filippazzo et al. (2015)</a> sample.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">For access to the full dataset, an email request must be made to a BDNYC group admin.</p>
+</div>
+</div>
+<div class="section" id="accessing-the-database">
+<h1>Accessing the Database<a class="headerlink" href="#accessing-the-database" title="Permalink to this headline">¶</a></h1>
+<p>To start using the database, launch iPython, import the module, then initialize the database with the <a class="reference internal" href="astrodb.html#astrodb.get_db" title="astrodb.get_db"><code class="xref py py-class docutils literal"><span class="pre">astrodb.get_db()</span></code></a> class like so:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">astrodbkit</span> <span class="kn">import</span> <span class="n">astrodb</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">astrodb</span><span class="o">.</span><span class="n">get_db</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>Voila! You can see an inventory of all data for a specific source by passing a <em>source_id</em> to the <a class="reference internal" href="astrodb.html#astrodb.get_db.inventory" title="astrodb.get_db.inventory"><code class="xref py py-meth docutils literal"><span class="pre">inventory()</span></code></a> method:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">db</span><span class="o">.</span><span class="n">inventory</span><span class="p">(</span><span class="mi">86</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>This will also plot all available spectra for that source for visual inspection if you set <strong>plot=True</strong>.</p>
+</div>
+<div class="section" id="querying-the-database">
+<h1>Querying the Database<a class="headerlink" href="#querying-the-database" title="Permalink to this headline">¶</a></h1>
+<p>Now that you have the database at your fingertips, you’ll want to get some info out of it. To do this, you can pass SQL queries wrapped in double-quotes (&#8221;) to the <a class="reference internal" href="astrodb.html#astrodb.get_db.query" title="astrodb.get_db.query"><code class="xref py py-meth docutils literal"><span class="pre">query()</span></code></a> method:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">data</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span> <span class="s">&quot;SQL_query_goes_here&quot;</span> <span class="p">)</span>
+</pre></div>
+</div>
+<p><a class="reference external" href="http://www.bdnyc.org/?p=898">Here is a detailed post about how to write a SQL query</a>.</p>
+<p>The result of a SQL query is a Numpy array with the data requested from each record. For example, we can get a source&#8217;s photometry from the PHOTOMETRY table with:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s">&quot;select band,magnitude from photometry where source_id=202&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>which gives the output:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="s">&#39;J&#39;</span><span class="p">,</span> <span class="mf">13.526</span><span class="p">],[</span><span class="s">&#39;H&#39;</span><span class="p">,</span> <span class="mf">12.807</span><span class="p">],[</span><span class="s">&#39;Ks&#39;</span><span class="p">,</span> <span class="mf">12.503</span><span class="p">],[</span><span class="s">&#39;W1&#39;</span><span class="p">,</span> <span class="mf">12.486</span><span class="p">],[</span><span class="s">&#39;W2&#39;</span><span class="p">,</span> <span class="mf">12.386</span><span class="p">],[</span><span class="s">&#39;W3&#39;</span><span class="p">,</span> <span class="mf">12.313</span><span class="p">],[</span><span class="s">&#39;W4&#39;</span><span class="p">,</span> <span class="mf">8.525</span><span class="p">]])</span>
+</pre></div>
+</div>
+<p>Alternatively, we can have this data returned as a Python dictionary with:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="s">&quot;select band,magnitude from photometry where source_id=202&quot;</span><span class="p">,</span> <span class="n">DICT</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>whose output looks like:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="p">[{</span><span class="s">&#39;band&#39;</span><span class="p">:</span> <span class="s">&#39;J&#39;</span><span class="p">,</span> <span class="s">&#39;magnitude&#39;</span><span class="p">:</span> <span class="mf">13.526</span><span class="p">},{</span><span class="s">&#39;band&#39;</span><span class="p">:</span> <span class="s">&#39;H&#39;</span><span class="p">,</span> <span class="s">&#39;magnitude&#39;</span><span class="p">:</span> <span class="mf">12.807</span><span class="p">},{</span><span class="s">&#39;band&#39;</span><span class="p">:</span> <span class="s">&#39;Ks&#39;</span><span class="p">,</span> <span class="s">&#39;magnitude&#39;</span><span class="p">:</span> <span class="mf">12.503</span><span class="p">},{</span><span class="s">&#39;band&#39;</span><span class="p">:</span> <span class="s">&#39;W1&#39;</span><span class="p">,</span> <span class="s">&#39;magnitude&#39;</span><span class="p">:</span> <span class="mf">12.486</span><span class="p">},{</span><span class="s">&#39;band&#39;</span><span class="p">:</span> <span class="s">&#39;W2&#39;</span><span class="p">,</span> <span class="s">&#39;magnitude&#39;</span><span class="p">:</span> <span class="mf">12.386</span><span class="p">},{</span><span class="s">&#39;band&#39;</span><span class="p">:</span> <span class="s">&#39;W3&#39;</span><span class="p">,</span> <span class="s">&#39;magnitude&#39;</span><span class="p">:</span> <span class="mf">12.313</span><span class="p">},{</span><span class="s">&#39;band&#39;</span><span class="p">:</span> <span class="s">&#39;W4&#39;</span><span class="p">,</span> <span class="s">&#39;magnitude&#39;</span><span class="p">:</span> <span class="mf">8.525</span><span class="p">}]</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="contents">
+<h1>Contents<a class="headerlink" href="#contents" title="Permalink to this headline">¶</a></h1>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="astrodb.html">astrodb module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="votools.html">votools module</a></li>
+</ul>
+</div>
+<p>Indices and tables</p>
+<ul class="simple">
+<li><a class="reference internal" href="genindex.html"><span>Index</span></a></li>
+<li><a class="reference internal" href="py-modindex.html"><span>Module Index</span></a></li>
+<li><a class="reference internal" href="search.html"><span>Search Page</span></a></li>
+</ul>
+</div>
+
+
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="astrodb.html" class="btn btn-neutral float-right" title="astrodb module">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2016, Joe Filippazzo.
+    </p>
+  </div>
+
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/snide/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+  
+</footer>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  
+
+    <script type="text/javascript">
+        var DOCUMENTATION_OPTIONS = {
+            URL_ROOT:'./',
+            VERSION:'0.2.0',
+            COLLAPSE_INDEX:false,
+            FILE_SUFFIX:'.html',
+            HAS_SOURCE:  true
+        };
+    </script>
+      <script type="text/javascript" src="_static/jquery.js"></script>
+      <script type="text/javascript" src="_static/underscore.js"></script>
+      <script type="text/javascript" src="_static/doctools.js"></script>
+
+  
+
+  
+  
+    <script type="text/javascript" src="_static/js/theme.js"></script>
+  
+
+  
+  
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.StickyNav.enable();
+      });
+  </script>
+   
+
+</body>
+</html>
