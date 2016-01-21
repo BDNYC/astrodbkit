@@ -1,0 +1,7 @@
+astrodbkit
+==========
+
+.. toctree::
+   :maxdepth: 4
+
+   astrodbkit

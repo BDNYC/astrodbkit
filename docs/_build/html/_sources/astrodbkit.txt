@@ -1,0 +1,22 @@
+astrodbkit package
+==================
+
+Submodules
+----------
+
+astrodbkit.astrodb module
+-------------------------
+
+.. automodule:: astrodbkit.astrodb
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+
+Module contents
+---------------
+
+.. automodule:: astrodbkit
+    :members:
+    :undoc-members:
+    :show-inheritance:
