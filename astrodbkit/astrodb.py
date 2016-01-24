@@ -1,10 +1,10 @@
 #!/usr/bin/python
 # Author: Joe Filippazzo, jcfilippazzo@gmail.com
 
-import io, os, sys, itertools, urllib2, sqlite3 as sql, numpy as np, matplotlib.pyplot as plt, astropy.io.fits as pf, astropy.io.ascii as ii, astropy.table as at
-import warnings
+import io, os, sys, itertools, sqlite3, warnings
+import numpy as np, matplotlib.pyplot as plt
+import astropy.io.fits as pf, astropy.io.ascii as ii, astropy.table as at
 warnings.simplefilter('ignore')
-package_path = os.path.dirname(os.path.abspath(__file__))
 
 def create_database(dbpath):
   """
@@ -24,7 +24,7 @@ def create_database(dbpath):
   else: print "Please provide a path and file name with a .db file extension, e.g. /Users/Me/Desktop/test.db"
 
 class get_db:
-  def __init__(self, dbpath=package_path+'/bdnyc198.db'):
+  def __init__(self, dbpath):
     """
     Initialize the database.
     
@@ -46,7 +46,7 @@ class get_db:
         for idx,col in enumerate(cursor.description): d[col[0]] = row[idx]
         return d
     
-      con = sql.connect(dbpath, isolation_level=None, detect_types=sql.PARSE_DECLTYPES)
+      con = sqlite3.connect(dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
       con.text_factory = str
       self.conn = con
       self.list = con.cursor().execute
@@ -76,66 +76,80 @@ class get_db:
     None
     
     """
-    # Digest the ascii file into table
-    data = ii.read(ascii)
-
-    # Get list of all columns and make an empty table for new records 
-    columns, types, required = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:4]
-    type_dict = {'INTEGER':np.dtype('int64'), 'REAL':np.dtype('float64'), 'TEXT':np.dtype('S64'), 'ARRAY':np.dtype('object'), 'SPECTRUM':np.dtype('S128')}
-    types = [type_dict[t] for t in types]
-    new_records = at.Table(names=columns, dtype=types)
-    
-    # If a row contains photometry for multiple bands, use the *multiband argument and execute this
-    if multiband and table.lower()=='photometry':    
+    if os.path.isfile(ascii):
       
-      # Recognized filters for multiband photometry upload. Update this to pull from managed list such as SVO Filter Profile Service
-      bands = ['HST_F336W', 'GALEX_FUV', 'DES_g', 'HST_F775W', 'HST_F190N', 'DES_r', 'MIPS_[24]', 'HST_F090M', \
-              'GAIA_BP', 'HST_F215N', 'GAIA_RP', 'IRAC_[8]', 'HST_F140W', 'GALEX_NUV', 'DENIS_J', 'DENIS_I', \
-              'HST_F673N', 'HST_F164N', 'SDSS_r', 'HST_F170M', 'DES_Y', 'WISE_W3', 'HST_F475W', 'MKO_J', 'JOHNSON_B', \
-              'DENIS_Ks', 'GAIA_G', 'COUSINS_I', '2MASS_H', '2MASS_J', 'HST_F555W', '2MASS_Ks', 'IRAC_[3.6]', 'COUSINS_R', \
-              'JOHNSON_U', 'JOHNSON_V', 'HST_F110W', 'HST_F625W', 'MKO_K', 'IRAC_[5.8]', 'MKO_Y', 'SDSS_g', 'DES_u', 'SDSS_i', \
-              'HST_F656N', 'DES_z', 'HST_F850LP', 'FS_J1', 'FS_J2', 'FS_J3', 'HST_F390N', 'MKO_M', 'WISE_W4', 'SDSS_u', \
-              'WISE_W2', 'WISE_W1', 'MKO_H', 'DES_i', 'IRAC_[4.5]', 'SDSS_z', 'MKO_L']
+      # Digest the ascii file into table
+      data = ii.read(ascii)
+
+      # Get list of all columns and make an empty table for new records 
+      columns, types, required = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:4]
+      type_dict = {'INTEGER':np.dtype('int64'), 'REAL':np.dtype('float64'), 'TEXT':np.dtype('S64'), 'ARRAY':np.dtype('object'), 'SPECTRUM':np.dtype('S128')}
+      types = [type_dict[t] for t in types]
+      new_records = at.Table(names=columns, dtype=types)
+    
+      # If a row contains photometry for multiple bands, use the *multiband argument and execute this
+      if multiband and table.lower()=='photometry':    
       
-      # Pull out columns that are band names
-      for b in list(set(bands)&set(data.colnames)):
-        try:
-          # Get the repeated data plus the band data and rename the columns
-          band = data[list(set(columns)&set(data.colnames))+[b,b+'_unc']]
-          for suf in ['','_unc']: band.rename_column(b+suf,'magnitude'+suf)
-          band.add_column(at.Column([b]*len(band), name='band'))
+        # Recognized filters for multiband photometry upload. Update this to pull from managed list such as SVO Filter Profile Service
+        bands = ['HST_F336W', 'GALEX_FUV', 'DES_g', 'HST_F775W', 'HST_F190N', 'DES_r', 'MIPS_[24]', 'HST_F090M', \
+                'GAIA_BP', 'HST_F215N', 'GAIA_RP', 'IRAC_[8]', 'HST_F140W', 'GALEX_NUV', 'DENIS_J', 'DENIS_I', \
+                'HST_F673N', 'HST_F164N', 'SDSS_r', 'HST_F170M', 'DES_Y', 'WISE_W3', 'HST_F475W', 'MKO_J', 'JOHNSON_B', \
+                'DENIS_Ks', 'GAIA_G', 'COUSINS_I', '2MASS_H', '2MASS_J', 'HST_F555W', '2MASS_Ks', 'IRAC_[3.6]', 'COUSINS_R', \
+                'JOHNSON_U', 'JOHNSON_V', 'HST_F110W', 'HST_F625W', 'MKO_K', 'IRAC_[5.8]', 'MKO_Y', 'SDSS_g', 'DES_u', 'SDSS_i', \
+                'HST_F656N', 'DES_z', 'HST_F850LP', 'FS_J1', 'FS_J2', 'FS_J3', 'HST_F390N', 'MKO_M', 'WISE_W4', 'SDSS_u', \
+                'WISE_W2', 'WISE_W1', 'MKO_H', 'DES_i', 'IRAC_[4.5]', 'SDSS_z', 'MKO_L']
+      
+        # Pull out columns that are band names
+        for b in list(set(bands)&set(data.colnames)):
+          try:
+            # Get the repeated data plus the band data and rename the columns
+            band = data[list(set(columns)&set(data.colnames))+[b,b+'_unc']]
+            for suf in ['','_unc']: band.rename_column(b+suf,'magnitude'+suf)
+            band.add_column(at.Column([b]*len(band), name='band'))
 
-          # Add the band data to the list of new_records
-          new_records = at.vstack([new_records,band])
-        except IOError: pass
+            # Add the band data to the list of new_records
+            new_records = at.vstack([new_records,band])
+          except IOError: pass
     
-    else:      
-      # Inject data into full database table format
-      new_records = at.vstack([new_records,data])[new_records.colnames]
+      else:      
+        # Inject data into full database table format
+        new_records = at.vstack([new_records,data])[new_records.colnames]
     
-    # Reject rows that fail column requirements, e.g. NOT NULL fields like 'source_id'
-    for r in columns[np.where(np.logical_and(required,columns!='id'))]: new_records = new_records[np.where(new_records[r])]
+      # Reject rows that fail column requirements, e.g. NOT NULL fields like 'source_id'
+      for r in columns[np.where(np.logical_and(required,columns!='id'))]: new_records = new_records[np.where(new_records[r])]
     
-    # For spectra, try to populate the table by reading the FITS header
-    if table.lower()=='spectra':
-      for n,new_rec in enumerate(new_records): 
-        new_records[n] = _autofill_spec_record(new_rec)
+      # For spectra, try to populate the table by reading the FITS header
+      if table.lower()=='spectra':
+        del_records = []
+        for n,new_rec in enumerate(new_records):
+          
+          # Test if the file exists and try to pull metadata from the FITS header
+          if os.path.isfile(new_rec['spectrum']):
+            new_records[n] = _autofill_spec_record(new_rec)
+          else: 
+            print 'Error adding the spectrum at {}'.format(new_rec['spectrum'])
+            del_records.append(n)
+        
+        # Remove bad records from the table
+        new_records.remove_rows(del_records)
 
-    # Add the new records
-    for new_rec in new_records:
-      new_rec = list(new_rec)
-      for n,col in enumerate(new_rec): 
-        if type(col)==np.ma.core.MaskedConstant: new_rec[n] = None
-      self.modify("INSERT INTO {} VALUES({})".format(table, ','.join('?'*len(columns))), new_rec)
+      # Add the new records
+      for new_rec in new_records:
+        new_rec = list(new_rec)
+        for n,col in enumerate(new_rec): 
+          if type(col)==np.ma.core.MaskedConstant: new_rec[n] = None
+        self.modify("INSERT INTO {} VALUES({})".format(table, ','.join('?'*len(columns))), new_rec)
     
-    # Print a table of the new records or bad news
-    if new_records: 
-      pprint(new_records, names=columns, title="{} new records added to the {} table.".format(len(new_records),table.upper()))
-    else: 
-      print 'No new records added to the {} table. Check your input file {}'.format(table,ascii)
+      # Print a table of the new records or bad news
+      if new_records: 
+        pprint(new_records, names=columns, title="{} new records added to the {} table.".format(len(new_records),table.upper()))
+      else: 
+        print 'No new records added to the {} table. Check your input file {}'.format(table,ascii)
     
-    # Run table clean up
-    self.clean_up(table)
+      # Run table clean up
+      # self.clean_up(table)
+    
+    else: print 'Please check the file path {}'.format(ascii)
  
   def clean_up(self, table):
     """
@@ -264,9 +278,12 @@ class get_db:
       The text or coordinate tuple to search the SOURCES table with.
       
     """
+    # Try coordinate search, then sring search
     try: q = "SELECT * FROM sources WHERE ra BETWEEN "+str(search[0]-0.01667)+" AND "+str(search[0]+0.01667)+" AND dec BETWEEN "+str(search[1]-0.01667)+" AND "+str(search[1]+0.01667)
     except TypeError: q = "SELECT * FROM sources WHERE REPLACE(names,' ','') like '%"+search.replace(' ','')+"%' or designation like '%"+search+"%' or unum like '%"+search+"%' or shortname like '%"+search+"%'"
     results = self.query(q, fmt='table')
+    
+    # Return inventory if there is only one result, otherwise print all the results
     if results: 
       if len(results)==1: self.inventory(int(results[0][0]))
       else: pprint(results)
@@ -454,7 +471,7 @@ class get_db:
       else:
         self.list(SQL, params)
         self.conn.commit()
-        if verbose: print 'Number of records modified: {}'.format(self.list("SELECT changes()").fetchone()[0])
+        if verbose: print 'Number of records modified: {}'.format(self.query("SELECT changes()", fetch='one')[0])
     except IOError:
       print 'Could not execute! Please check the query syntax and parameters format.'
 
@@ -541,17 +558,23 @@ class get_db:
     i = self.query("SELECT * FROM spectra WHERE id={}".format(spectrum_id), fetch='one', fmt='dict')
     if i:
       try:
+        spec = i['spectrum']
+        
+        # Draw the axes and add the metadata
         if not overplot: 
           fig, ax = plt.subplots()
           plt.rc('text', usetex=False)
           ax.set_yscale('log', nonposy='clip'), plt.title('source_id = {}'.format(i['source_id']))
           plt.figtext(0.15,0.88, '{}\n{}\n{}\n{}'.format(i['filename'],self.query("SELECT name FROM telescopes WHERE id={}".format(i['telescope_id']), fetch='one')[0] if i['telescope_id'] else '',self.query("SELECT name FROM instruments WHERE id={}".format(i['instrument_id']), fetch='one')[0] if i['instrument_id'] else '',i['obs_date']), verticalalignment='top')
           ax.set_xlabel('[{}]'.format(i['wavelength_units'])), ax.set_ylabel('[{}]'.format(i['flux_units'])), ax.legend(loc=8, frameon=False)
-        ax.loglog(i['spectrum'][0], i['spectrum'][1], c=color, label='spec_id: {}'.format(i['id']))
+        else: ax = plt.gca()
+        
+        # Plot the data
+        ax.loglog(spec.data[0], spec.data[1], c=color, label='spec_id: {}'.format(i['id']))
         X, Y = plt.xlim(), plt.ylim()
-        try: ax.fill_between(i['spectrum'][0], i['spectrum'][1]-i['spectrum'][2], i['spectrum'][1]+i['spectrum'][2], color='b', alpha=0.3), ax.set_xlim(X), ax.set_ylim(Y)
+        try: ax.fill_between(spec.data[0], spec.data[1]-spec.data[2], spec.data[1]+spec.data[2], color=color, alpha=0.3), ax.set_xlim(X), ax.set_ylim(Y)
         except: print 'No uncertainty array for spectrum {}'.format(spectrum_id)
-      except IOErrors: print "Could not plot spectrum {}".format(spectrum_id); plt.close()
+      except IOError: print "Could not plot spectrum {}".format(spectrum_id); plt.close()
     else: print "No spectrum {} in the SPECTRA table.".format(spectrum_id)
 
   def query(self, SQL, params='', fmt='array', fetch='all', unpack=False):
@@ -695,11 +718,11 @@ def convert_spectrum(File):
     return spectrum
 
 # Register the adapters
-sql.register_adapter(np.ndarray, adapt_array)
+sqlite3.register_adapter(np.ndarray, adapt_array)
 
 # Register the converters
-sql.register_converter("ARRAY", convert_array)
-sql.register_converter("SPECTRUM", convert_spectrum)
+sqlite3.register_converter("ARRAY", convert_array)
+sqlite3.register_converter("SPECTRUM", convert_spectrum)
 
 def pprint(data, names='', title=''):
   """
