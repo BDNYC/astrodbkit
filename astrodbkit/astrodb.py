@@ -6,26 +6,6 @@ import warnings
 warnings.simplefilter('ignore')
 package_path = os.path.dirname(os.path.abspath(__file__))
 
-def clean_header(fitsPath):
-  """
-  Fix broken fits headers by cleaning illegal characters from keywords, inserting an END card, and rewriting the header.
-  
-  Parameters
-  ----------
-  fitsPath: str
-    The path of the FITS file to be repaired.
-  
-  Returns
-  -------
-  fits.header
-    The FITS header with an END card inserted and illegal characters removed from keywords.
-    
-  """
-  header = pf.open(fitsPath, ignore_missing_end=True)[0].header
-  new_header = pf.Header()
-  for x,y,z in header.cards: new_header[x.replace('.','_').replace('#','')] = (y,z)
-  return pf.PrimaryHDU(header=new_header).header
-
 def create_database(dbpath):
   """
   Create a new database at the given *dbpath.
@@ -96,174 +76,66 @@ class get_db:
     None
     
     """
-    # Digest the ascii file into Python 
-    data, insert, update = np.genfromtxt(ascii, delimiter=delimiter, dtype=object).tolist(), [], []
-    
-    # Get the column names and data types from the table
-    columns, types = zip(*self.list("PRAGMA table_info({})".format(table)).fetchall())[1:3]
+    # Digest the ascii file into table
+    data = ii.read(ascii)
 
-    # Grab the column names from the first line of the input ascii file 
-    data_columns = data.pop(0)
+    # Get list of all columns and make an empty table for new records 
+    columns, types, required = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:4]
+    type_dict = {'INTEGER':np.dtype('int64'), 'REAL':np.dtype('float64'), 'TEXT':np.dtype('S64'), 'ARRAY':np.dtype('object'), 'SPECTRUM':np.dtype('S128')}
+    types = [type_dict[t] for t in types]
+    new_records = at.Table(names=columns, dtype=types)
     
     # If a row contains photometry for multiple bands, use the *multiband argument and execute this
-    if multiband and table=='photometry':    
-      Tdata, new_data = zip(*data), []
+    if multiband and table.lower()=='photometry':    
       
       # Recognized filters for multiband photometry upload. Update this to pull from managed list such as SVO Filter Profile Service
-      bands = ['HST_F336W', 'GALEX_FUV', 'DES_g', 'HST_F775W', 'HST_F190N', 'DES_r', 'MIPS_[24]', 'HST_F090M', 'GAIA_BP', 'HST_F215N', 'GAIA_RP', 'IRAC_[8]', 'HST_F140W', 'GALEX_NUV', 'DENIS_J', 'DENIS_I', 'HST_F673N', 'HST_F164N', 'SDSS_r', 'HST_F170M', 'DES_Y', 'WISE_W3', 'HST_F475W', 'MKO_J', 'JOHNSON_B', 'DENIS_Ks', 'GAIA_G', 'COUSINS_I', '2MASS_H', '2MASS_J', 'HST_F555W', '2MASS_Ks', 'IRAC_[3.6]', 'COUSINS_R', 'JOHNSON_U', 'JOHNSON_V', 'HST_F110W', 'HST_F625W', 'MKO_K', 'IRAC_[5.8]', 'MKO_Y', 'SDSS_g', 'DES_u', 'SDSS_i', 'HST_F656N', 'DES_z', 'HST_F850LP', 'FS_J1', 'FS_J2', 'FS_J3', 'HST_F390N', 'MKO_M', 'WISE_W4', 'SDSS_u', 'WISE_W2', 'WISE_W1', 'MKO_H', 'DES_i', 'IRAC_[4.5]', 'SDSS_z', 'MKO_L']
+      bands = ['HST_F336W', 'GALEX_FUV', 'DES_g', 'HST_F775W', 'HST_F190N', 'DES_r', 'MIPS_[24]', 'HST_F090M', \
+              'GAIA_BP', 'HST_F215N', 'GAIA_RP', 'IRAC_[8]', 'HST_F140W', 'GALEX_NUV', 'DENIS_J', 'DENIS_I', \
+              'HST_F673N', 'HST_F164N', 'SDSS_r', 'HST_F170M', 'DES_Y', 'WISE_W3', 'HST_F475W', 'MKO_J', 'JOHNSON_B', \
+              'DENIS_Ks', 'GAIA_G', 'COUSINS_I', '2MASS_H', '2MASS_J', 'HST_F555W', '2MASS_Ks', 'IRAC_[3.6]', 'COUSINS_R', \
+              'JOHNSON_U', 'JOHNSON_V', 'HST_F110W', 'HST_F625W', 'MKO_K', 'IRAC_[5.8]', 'MKO_Y', 'SDSS_g', 'DES_u', 'SDSS_i', \
+              'HST_F656N', 'DES_z', 'HST_F850LP', 'FS_J1', 'FS_J2', 'FS_J3', 'HST_F390N', 'MKO_M', 'WISE_W4', 'SDSS_u', \
+              'WISE_W2', 'WISE_W1', 'MKO_H', 'DES_i', 'IRAC_[4.5]', 'SDSS_z', 'MKO_L']
       
-      # Get the columns that are not magnitudes
-      repeat_data = [Tdata[idx] for idx,c in enumerate(data_columns) if c.replace('_unc','') not in bands]
-      repeat_cols = [c for c in data_columns if c.replace('_unc','') not in bands]+['band','magnitude','magnitude_unc']
-      
-      # For each band, make a new data row
-      for c in data_columns:
-        if c in bands:
-          new_data += zip(*repeat_data+[[c]*len(data),Tdata[data_columns.index(c)],Tdata[data_columns.index(c+'_unc')]])
+      # Pull out columns that are band names
+      for b in list(set(bands)&set(data.colnames)):
+        try:
+          # Get the repeated data plus the band data and rename the columns
+          band = data[list(set(columns)&set(data.colnames))+[b,b+'_unc']]
+          for suf in ['','_unc']: band.rename_column(b+suf,'magnitude'+suf)
+          band.add_column(at.Column([b]*len(band), name='band'))
+
+          # Add the band data to the list of new_records
+          new_records = at.vstack([new_records,band])
+        except IOError: pass
     
-      # Transpose the data columns into rows and identify the new data columns to insert
-      data, data_columns = new_data, repeat_cols
-                
-    # Insert data strictly matching SQL table field names to ascii input column names
-    for row in data:
-      values = [None for i in columns]
-      for col in columns: values[columns.index(col)] = row[data_columns.index(col)] if col in data_columns and row[data_columns.index(col)] else None
-      # values[0] = sorted(list(set(range(1,self.list("SELECT max(id) FROM {}".format(table)).fetchone()[0]+2))-set(zip(*self.list("SELECT id FROM {}".format(table)).fetchall())[0])))[0]
-      if isinstance(values[1],int) or (values[1] or 'None').isdigit(): update.append(tuple(values)) if values[columns.index('id')] else insert.append(tuple(values))
+    else:      
+      # Inject data into full database table format
+      new_records = at.vstack([new_records,data])[new_records.colnames]
+    
+    # Reject rows that fail column requirements, e.g. NOT NULL fields like 'source_id'
+    for r in columns[np.where(np.logical_and(required,columns!='id'))]: new_records = new_records[np.where(new_records[r])]
+    
+    # For spectra, try to populate the table by reading the FITS header
+    if table.lower()=='spectra':
+      for n,new_rec in enumerate(new_records): 
+        new_records[n] = _autofill_spec_record(new_rec)
 
-    # Reject rows that fail column constraints, e.g. NOT NULL fields like 'source_id'
-    constraints, keep = np.asarray(zip(*self.query("pragma table_info({})".format(table)))[3],dtype=bool), []
-    for n,d in enumerate(insert):
-      if all(np.asarray(d,dtype=bool)[constraints][1:]): keep.append(n)
-    try: insert = list(np.array(insert)[np.array(keep)])
-    except IndexError: insert = ''
-
-    # If they are unique records (i.e. don't have an 'id' column value specified in the ascii file), add them as new records
-    if insert:
-      pprint(np.asarray(insert), names=columns)
-      for i in insert: self.modify("INSERT INTO {} VALUES({})".format(table, ','.join('?'*len(columns))), i, verbose=False)
-      print "{} new records added to the {} table.".format(len(insert),table.upper())
-
-    # If they do have a specified 'id', update the fields for that record with the supplied information
-    if update:
-      pprint(np.asarray([['-'*30,'-'*100],['[column name]','Display full record entry for that column without taking action'],['k','Keeps both records and assigns second one new id if necessary'],['r','Replaces all columns of first record with second record values'],['r [column name] [column name]...','Replaces specified columns of first record with second record values'],['c','Complete empty columns of first record with second record values where possible'],['[Enter]','Keep first record and delete second'],['abort','Abort merge of current table, undo all changes, and proceed to next table']]), names=['Command','Result'])
-      for item in update:
-        record = self.list("SELECT * FROM {} WHERE id={}".format(table, item[columns.index('id')])).fetchone()
-        if record: self.compare_records(self, table, columns, record, item)
+    # Add the new records
+    for new_rec in new_records:
+      new_rec = list(new_rec)
+      for n,col in enumerate(new_rec): 
+        if type(col)==np.ma.core.MaskedConstant: new_rec[n] = None
+      self.modify("INSERT INTO {} VALUES({})".format(table, ','.join('?'*len(columns))), new_rec)
+    
+    # Print a table of the new records or bad news
+    if new_records: 
+      pprint(new_records, names=columns, title="{} new records added to the {} table.".format(len(new_records),table.upper()))
+    else: 
+      print 'No new records added to the {} table. Check your input file {}'.format(table,ascii)
     
     # Run table clean up
     self.clean_up(table)
-
-  def add_spectrum(self, filepath, source_id, wavelength_units='', flux_units='', publication_id='', obs_date='', wavelength_order='', regime='', instrument_id='', telescope_id='', mode_id='', comment='', header_chars=['#']):
-    """
-    Adds an ascii or .fits file to the SQL database
-    
-    Parameters
-    ----------
-    filepath: str
-      The path to the FITS or ascii file
-    source_id: int
-      The id from the SOURCES table of the object to which the spectrum will be associated.
-    wavelength_units: str (optional)
-      The wavelength units of the spectrum, e.g. 'um', 'A', 'nm'
-    flux_units: str (optional)
-      The flux units of the spectrum, e.g. 'erg/s/cm2/A', 'W m-2 um-1'
-    publication_id: int (optional)
-      The id from the PUBLICATIONS table that indicates the reference for the spectrum
-    obs_date: str (optional)
-      The date of the observation
-    wavelength_order: int (optional)
-      For high resolution spectra, the order of the observation, e.g. '65' for NIRSPEC order 65. Leave blank for low and medium resolution spectra.
-    instrument_id: int (optional)
-      The id from the INSTRUMENTS table used to take the spectrum
-    telescope_id: int (optional)
-      The id from the TELESCOPES table used to take the spectrum
-    mode_id: int (optional)
-      The id from the MODES table used to take the spectrum, if applicable
-    regime: str (optional)
-      The regime of the spectrum, e.g. 'OPT','NIR' or 'MIR'
-    comment: str (optional)
-      Any comments about the spectrum that might be useful to future users
-    header_chars: sequence 
-      If a line begins with any character in this list, that text will be used to generate a FITS header for the spectrum.
-    """
-    filename = os.path.basename(filepath)
-    
-    # If it's a FITS file, try to get the missing metadata from the header
-    if filepath.endswith('.fits'):
-      header = clean_header(filepath)
-
-      # Wavelength units
-      if not wavelength_units:
-        try:
-          wavelength_units = header['XUNITS'] 
-          if 'microns' in wavelength_units or 'Microns' in wavelength_units or 'um' in wavelength_units: wavelength_units = 'um'
-        except KeyError:
-          try:
-             if header['BUNIT']: wavelength_units = 'um'
-          except KeyError: wavelength_units = ''
-      
-      # Flux units
-      if not flux_units:
-        try: flux_units = header['YUNITS'].replace(' ','')
-        except KeyError:
-          try: flux_units = header['BUNIT'].replace(' ','')
-          except KeyError: flux_units = ''
-      if 'erg' in flux_units and 'A' in flux_units: flux_units = 'ergs-1cm-2A-1' if 'erg' in flux_units and 'A' in flux_units else 'ergs-1cm-2um-1' if 'erg' in flux_units and 'um' in flux_units else 'Wm-2um-1' if 'W' in flux_units and 'um' in flux_units else 'Wm-2A-1' if 'W' in flux_units and 'A' in flux_units else ''
-
-      # Observation date
-      if not obs_date:
-        try: obs_date = header['DATE_OBS']
-        except KeyError:
-          try: obs_date = header['DATE-OBS']
-          except KeyError:
-            try: obs_date = header['DATE']
-            except KeyError: obs_date = ''
-      
-      # Telescope id
-      if not telescope_id:
-        try:
-          n = header['TELESCOP'].lower() if isinstance(header['TELESCOP'],str) else ''
-          telescope_id = 5 if 'hst' in n else 6 if 'spitzer' in n else 7 if 'irtf' in n else 9 if 'keck' in n and 'ii' in n else 8 if 'keck' in n and 'i' in n else 10 if 'kp' in n and '4' in n else 11 if 'kp' in n and '2' in n else 12 if 'bok' in n else 13 if 'mmt' in n else 14 if 'ctio' in n and '1' in n else 15 if 'ctio' in n and '4' in n else 16 if 'gemini' in n and 'north' in n else 17 if 'gemini' in n and 'south' in n else 18 if ('vlt' in n and 'U2' in n) else 19 if '3.5m' in n else 20 if 'subaru' in n else 21 if ('mag' in n and 'ii' in n) or ('clay' in n) else 22 if ('mag' in n and 'i' in n) or ('baade' in n) else 23 if ('eso' in n and '1m' in n) else 24 if 'cfht' in n else 25 if 'ntt' in n else 26 if ('palomar' in n and '200-inch' in n) else 27 if 'pan-starrs' in n else 28 if ('palomar' in n and '60-inch' in n) else 29 if ('ctio' in n and '0.9m' in n) else 30 if 'soar' in n else 31 if ('vlt' in n and 'U3' in n) else 32 if ('vlt' in n and 'U4' in n) else 33 if 'gtc' in n else None
-        except KeyError: telescope_id = ''
-      
-      # Instrument id
-      if not instrument_id:
-        try: 
-          i = header['INSTRUME'].lower()
-          instrument_id = 1 if 'r-c spec' in i or 'test' in i or 'nod' in i else 2 if 'gmos-n' in i else 3 if 'gmos-s' in i else 4 if 'fors' in i else 5 if 'lris' in i else 6 if 'spex' in i else 7 if 'ldss3' in i else 8 if 'focas' in i else 9 if 'nirspec' in i else 10 if 'irs' in i else 11 if 'fire' in i else 12 if 'mage' in i else 13 if 'goldcam' in i else 14 if 'sinfoni' in i else 15 if 'osiris' in i else 16 if 'triplespec' in i else 17 if 'x-shooter' in i else 18 if 'gnirs' in i else 19 if 'wircam' in i else 20 if 'cormass' in i else 21 if 'isaac' in i else 22 if 'irac' in i else 23 if 'dis' in i else 24 if 'susi2' in i else 25 if 'ircs' in i else 26 if 'nirc' in i else 29 if 'stis' in i else 0
-        except KeyError: instrument_id = ''
-
-    # Pull comments out of text file (lines which begin with one of the specified *header_chars*) and create FITS header for database insertion
-    if filepath.endswith('.txt'):
-      h = [i.strip() for i in open(filepath) if any([i.startswith(char) for char in header_chars])]
-      if h:
-        header = pf.Header()
-        for i in h: header['COMMENT'] = i
-        header = pf.PrimaryHDU(header=header).header
-      else: header = None
-
-    # By default, the filepath is used as the location of the spectrum...
-    spectrum = filepath
-    
-    # ...but try to upload it!
-    try:
-      # Upload the file to AWS S3
-      import boto3
-      s3 = boto3.resource('s3')
-      data = open(filepath, 'rb')
-      s3.Bucket('bdnyc').put_object(Key=filename, Body=data)
-
-      # Return the URL for database insertion
-      spectrum = 'https://s3.amazonaws.com/bdnyc/{}'.format(filename)
-    except: pass
-
-    # Add data to the database
-    try:    
-      spec_id = sorted(list(set(range(1,self.list("SELECT max(id) FROM spectra").fetchone()[0]+2))-set(zip(*self.list("SELECT id FROM spectra").fetchall())[0])))[0]
-      self.modify("INSERT INTO spectra VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (spec_id, source_id, spectrum, wavelength_units, flux_units, wavelength_order, regime, publication_id, obs_date, instrument_id, telescope_id, mode_id, filename, comment, header))
-      pprint(np.asarray([[spec_id, source_id, wavelength_units, flux_units, regime, publication_id, obs_date, instrument_id, telescope_id, mode_id, filename, comment]]), names=['spec_id','source_id','w_unit','f_unit','regime','pub_id','obs_date', 'inst_id', 'scope_id', 'mode_id', 'filename', 'comment'])
-    except: print "Couldn't add spectrum {} to database.".format(filepath)
  
   def clean_up(self, table):
     """
@@ -381,33 +253,6 @@ class get_db:
       if delete: self.modify("DELETE FROM {} WHERE id={}".format(table, new[0]))
       else: pass
     
-  def header(self, spectrum_id_or_path):
-    """
-    Prints the header information for the given **spectrum_id_or_path**.
-    
-    Parameters
-    ----------
-    spectrum_id_or_path: (int, str)
-      The id from the SPECTRA table or the path to the FITS file of the spectrum header to print.
-    
-    """
-    if isinstance(spectrum_id_or_path,int):
-      try: 
-        H = self.dict("SELECT * FROM spectra WHERE id={}".format(spectrum_id_or_path)).fetchone()['header']
-        if H: return H
-        else: print 'No header for spectrum {}'.format(spectrum_id_or_path)
-      except TypeError: print 'No spectrum with id {}'.format(spectrum_id_or_path)
-    elif os.path.isfile(spectrum_id_or_path):
-      if spectrum_id_or_path.endswith('.fits'):
-        return clean_header(spectrum_id_or_path)
-      else:
-        txt, H = open(spectrum_id_or_path), []
-        for i in txt: 
-          if i.startswith('#'): H.append(i)
-        txt.close()
-        print ''.join(H) if H else 'No header for spectrum {}'.format(spectrum_id_or_path)
-    else: print 'No such file {}'.format(spectrum_id_or_path)
-
   def identify(self, search):
     """
     For **search** input of (ra,dec) decimal degree tuple, i.e. '(12.3456,-65.4321)', returns all sources within 1 arcminute.
@@ -419,12 +264,12 @@ class get_db:
       The text or coordinate tuple to search the SOURCES table with.
       
     """
-    try: q = "SELECT id,ra,dec,designation,unum,shortname,names FROM sources WHERE ra BETWEEN "+str(search[0]-0.01667)+" AND "+str(search[0]+0.01667)+" AND dec BETWEEN "+str(search[1]-0.01667)+" AND "+str(search[1]+0.01667)
-    except TypeError: q = "SELECT id,ra,dec,designation,unum,shortname,components,companions,names FROM sources WHERE REPLACE(names,' ','') like '%"+search.replace(' ','')+"%' or designation like '%"+search+"%' or unum like '%"+search+"%' or shortname like '%"+search+"%'"
-    results = self.query(q)
-    if results.any(): 
+    try: q = "SELECT * FROM sources WHERE ra BETWEEN "+str(search[0]-0.01667)+" AND "+str(search[0]+0.01667)+" AND dec BETWEEN "+str(search[1]-0.01667)+" AND "+str(search[1]+0.01667)
+    except TypeError: q = "SELECT * FROM sources WHERE REPLACE(names,' ','') like '%"+search.replace(' ','')+"%' or designation like '%"+search+"%' or unum like '%"+search+"%' or shortname like '%"+search+"%'"
+    results = self.query(q, fmt='table')
+    if results: 
       if len(results)==1: self.inventory(int(results[0][0]))
-      else: pprint(results, names=['id','ra','dec','designation','unum','short','components','companions','names'])
+      else: pprint(results)
     else: print "No objects found by {}".format(search)
       
   def inventory(self, source_id, plot=False, fetch=False):
@@ -451,21 +296,20 @@ class get_db:
       for table in ['sources']+[t for t in self.query("SELECT * FROM sqlite_master WHERE type='table'", unpack=True)[1] if t!='sources']:
         
         # Get the columns, pull out redundant ones, and query the table for this source's data
-        columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
-        columns, types = [z[np.where(np.logical_and(columns!='spectrum',columns!='source_id'))] for z in [columns,types]]
-        try: data = self.query("SELECT {} FROM {} WHERE {}".format(','.join(columns),table,'id={}'.format(source_id) if table=='sources' else 'source_id={}'.format(source_id)))
-        except: data = np.array([])
+        columns = self.query("PRAGMA table_info({})".format(table), unpack=True)[1]
+        columns = columns[np.where(np.logical_and(columns!='spectrum',columns!='source_id'))]
+        try: data = self.query("SELECT {} FROM {} WHERE source_id={}".format(','.join(columns),table,source_id), fmt='table')
+        except: data = None
         
         # If there's data for this table, save it
-        if data.any(): 
-          data_table = at.Table(np.asarray(data), names=columns)
-          data_tables[table] = data_table
-          pprint(data_table, names=columns, title=table.upper())
+        if data: 
+          data_tables[table] = data
+          pprint(data, title=table.upper())
         
       if plot:
         for i in self.query("SELECT id FROM spectra WHERE source_id={}".format(source_id), unpack=True)[0]: self.plot_spectrum(i)
     
-    except: print 'No source with id {}. Try db.identify() to search the database for a source_id.'.format(source_id)
+    except IOError: print 'No source with id {}. Try db.identify() to search the database for a source_id.'.format(source_id)
     
     if fetch: return data_tables
 
@@ -783,23 +627,6 @@ def adapt_array(arr):
   np.save(out, arr), out.seek(0)
   return buffer(out.read())
 
-def adapt_header(header): 
-  """
-  Adapts a FITS header into a HEADER string to put into the database.
-  
-  Parameters
-  ----------
-  header: fits.header
-    The FITS header to be adapted into a HEADER type that can be inserted into a SQL file.
-    
-  Returns
-  -------
-  HEADER
-    The adapted HEADER object
-    
-  """
-  return header.tostring(sep='\n')
-
 def convert_array(array):
   """
   Converts an ARRAY string stored in the database back into a Numpy array.
@@ -818,31 +645,14 @@ def convert_array(array):
   out = io.BytesIO(array)
   out.seek(0)
   return np.load(out)
-
-def convert_header(header):
-  """
-  Converts a HEADER string stored in the database back into a FITS header.
   
-  Parameters
-  ----------
-  header: HEADER
-    The header object to be converted back into a FITS header.
-    
-  Returns
-  -------
-  fits.header
-    The converted FITS header.
-    
-  """
-  return pf.Header().fromstring(header, sep='\n') if header else None
-
-def convert_spectrum(url):
+def convert_spectrum(File):
   """
   Converts a SPECTRUM data type stored in the database into a (W,F,E) sequence of arrays.
   
   Parameters
   ----------
-  url: SPECTRUM
+  File: SPECTRUM
     The URL or filepath of the file to be converted into arrays.
     
   Returns
@@ -851,41 +661,53 @@ def convert_spectrum(url):
     The converted spectrum.
     
   """
-  spectrum = ''
+  spectrum, header = '', ''
   
-  if isinstance(url,str):
+  class Spectrum:
+    def __init__(self, data, header, path):
+        self.data = data
+        self.header = header
+        self.path = path
+  
+  if isinstance(File,str):
     
     # For FITS files
-    if url.endswith('.fits'):
-      try: spectrum = pf.getdata(url, cache=True)
+    if File.endswith('.fits'):
+      try: spectrum, header = pf.getdata(File, cache=True, header=True)
       except: pass
     
     # For .txt files
-    if url.endswith('.txt'): 
+    if File.endswith('.txt'): 
       try: 
-        spectrum = ii.read(url)
+        spectrum = ii.read(File)
         spectrum = np.array([np.asarray(spectrum.columns[n]) for n in [0,1,2]])
+        try: 
+          txt, header = open(File), []
+          for i in txt: 
+            if any([i.startswith(char) for char in ['#','|','\\']]): header.append(i.replace('\n',''))
+          txt.close()
+        except: pass
       except: pass
 
-  if spectrum=='': print 'Could not retrieve spectrum at {}.'.format(url); return url
-  else: return spectrum
+  if spectrum=='': print 'Could not retrieve spectrum at {}.'.format(File); return File
+  else: 
+    spectrum = Spectrum(spectrum, header, File)
+    return spectrum
 
 # Register the adapters
 sql.register_adapter(np.ndarray, adapt_array)
-sql.register_adapter(pf.header.Header, adapt_header)
 
 # Register the converters
 sql.register_converter("ARRAY", convert_array)
-sql.register_converter("HEADER", convert_header)
 sql.register_converter("SPECTRUM", convert_spectrum)
 
-def pprint(data, names, title=''):
+def pprint(data, names='', title=''):
   """
   Prints tables with a little bit 'o formatting
   
   Parameters
   ----------
-  data: (sequence, dict)
+  data: (sequence, dict, table)
     The data to print in the table
   names: sequence
     The column names
@@ -893,7 +715,84 @@ def pprint(data, names, title=''):
     The title of the table
     
   """
-  table = at.Table(data, names=[i.replace('wavelength','wav').replace('publication','pub').replace('instrument','inst').replace('telescope','scope') for i in names])
-  if title: print '\n'+title
-  ii.write(table, sys.stdout, Writer=ii.FixedWidthTwoLine, formats={'comments': '%.15s', 'comment': '%.15s', 'names': '%.20s', 'header':'%.6s'}, fill_values=[('None', '-')])
+  # Make the data into a table if it isn't already
+  if type(data)!=at.Table: data = at.Table(data, names=names)
   
+  # Put the title in the metadata
+  try: title = title or data.meta['name']
+  except: pass
+  
+  # Shorten the column names for slimmer data
+  for old,new in zip(*[data.colnames,[i.replace('wavelength','wav').replace('publication','pub').replace('instrument','inst').replace('telescope','scope') for i in data.colnames]]): data.rename_column(old,new) if new!=old else None
+  
+  # Print it!
+  if title: print '\n'+title
+  ii.write(data, sys.stdout, Writer=ii.FixedWidthTwoLine, formats={'comments': '%.15s', 'obs_date': '%.10s', 'names': '%.20s'}, fill_values=[('None', '-')])
+
+def clean_header(header):
+  try:
+    header = pf.open(File, ignore_missing_end=True)[0].header
+    new_header = pf.Header()
+    for x,y,z in header.cards: new_header[x.replace('.','_').replace('#','')] = (y,z)
+    header = pf.PrimaryHDU(header=new_header).header
+  except: pass
+
+def _autofill_spec_record(record):
+  """
+  Returns an astropy table with columns auto-filled from FITS header
+  
+  Parameters
+  ----------
+  record: astropy.io.fits.table.table.Row
+    The spectrum table row to scrape
+    
+  Returns
+  -------
+  record: astropy.io.fits.table.table.Row
+    The spectrum table row with possible new rows inserted
+  """
+  if record['spectrum'].endswith('.fits'):
+    header = pf.getheader(record['spectrum'])
+
+    # Wavelength units
+    if not record['wavelength_units']:
+      try: 
+        record['wavelength_units'] = header['XUNITS'] 
+      except KeyError:
+        try:
+           if header['BUNIT']: record['wavelength_units'] = 'um'
+        except KeyError: pass
+    if 'microns' in record['wavelength_units'] or 'Microns' in record['wavelength_units'] or 'um' in record['wavelength_units']: record['wavelength_units'] = 'um'
+
+    # Flux units
+    if not record['flux_units']:
+      try: record['flux_units'] = header['YUNITS'].replace(' ','')
+      except KeyError:
+        try: record['flux_units'] = header['BUNIT'].replace(' ','')
+        except KeyError: pass
+    if 'erg' in record['flux_units'] and 'A' in record['flux_units']: record['flux_units'] = 'ergs-1cm-2A-1' if 'erg' in record['flux_units'] and 'A' in record['flux_units'] else 'ergs-1cm-2um-1' if 'erg' in record['flux_units'] and 'um' in record['flux_units'] else 'Wm-2um-1' if 'W' in record['flux_units'] and 'um' in record['flux_units'] else 'Wm-2A-1' if 'W' in record['flux_units'] and 'A' in record['flux_units'] else ''
+
+    # Observation date
+    if not record['obs_date']:
+      try: record['obs_date'] = header['DATE_OBS']
+      except KeyError:
+        try: record['obs_date'] = header['DATE-OBS']
+        except KeyError:
+          try: record['obs_date'] = header['DATE']
+          except KeyError: pass
+
+    # Telescope id
+    if not record['telescope_id']:
+      try:
+        n = header['TELESCOP'].lower() if isinstance(header['TELESCOP'],str) else ''
+        record['telescope_id'] = 5 if 'hst' in n else 6 if 'spitzer' in n else 7 if 'irtf' in n else 9 if 'keck' in n and 'ii' in n else 8 if 'keck' in n and 'i' in n else 10 if 'kp' in n and '4' in n else 11 if 'kp' in n and '2' in n else 12 if 'bok' in n else 13 if 'mmt' in n else 14 if 'ctio' in n and '1' in n else 15 if 'ctio' in n and '4' in n else 16 if 'gemini' in n and 'north' in n else 17 if 'gemini' in n and 'south' in n else 18 if ('vlt' in n and 'U2' in n) else 19 if '3.5m' in n else 20 if 'subaru' in n else 21 if ('mag' in n and 'ii' in n) or ('clay' in n) else 22 if ('mag' in n and 'i' in n) or ('baade' in n) else 23 if ('eso' in n and '1m' in n) else 24 if 'cfht' in n else 25 if 'ntt' in n else 26 if ('palomar' in n and '200-inch' in n) else 27 if 'pan-starrs' in n else 28 if ('palomar' in n and '60-inch' in n) else 29 if ('ctio' in n and '0.9m' in n) else 30 if 'soar' in n else 31 if ('vlt' in n and 'U3' in n) else 32 if ('vlt' in n and 'U4' in n) else 33 if 'gtc' in n else None
+      except KeyError: pass
+
+    # Instrument id
+    if not record['instrument_id']:
+      try: 
+        i = header['INSTRUME'].lower()
+        record['instrument_id'] = 1 if 'r-c spec' in i or 'test' in i or 'nod' in i else 2 if 'gmos-n' in i else 3 if 'gmos-s' in i else 4 if 'fors' in i else 5 if 'lris' in i else 6 if 'spex' in i else 7 if 'ldss3' in i else 8 if 'focas' in i else 9 if 'nirspec' in i else 10 if 'irs' in i else 11 if 'fire' in i else 12 if 'mage' in i else 13 if 'goldcam' in i else 14 if 'sinfoni' in i else 15 if 'osiris' in i else 16 if 'triplespec' in i else 17 if 'x-shooter' in i else 18 if 'gnirs' in i else 19 if 'wircam' in i else 20 if 'cormass' in i else 21 if 'isaac' in i else 22 if 'irac' in i else 23 if 'dis' in i else 24 if 'susi2' in i else 25 if 'ircs' in i else 26 if 'nirc' in i else 29 if 'stis' in i else 0
+      except KeyError: pass
+
+  return record
