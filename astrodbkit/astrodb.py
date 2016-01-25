@@ -83,9 +83,7 @@ class get_db:
 
       # Get list of all columns and make an empty table for new records 
       columns, types, required = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:4]
-      type_dict = {'INTEGER':np.dtype('int64'), 'REAL':np.dtype('float64'), 'TEXT':np.dtype('S64'), 'ARRAY':np.dtype('object'), 'SPECTRUM':np.dtype('S128')}
-      types = [type_dict[t] for t in types]
-      new_records = at.Table(names=columns, dtype=types)
+      new_records = at.Table(names=columns, dtype=[type_dict[t] for t in types])
     
       # If a row contains photometry for multiple bands, use the *multiband argument and execute this
       if multiband and table.lower()=='photometry':    
@@ -147,7 +145,7 @@ class get_db:
         print 'No new records added to the {} table. Check your input file {}'.format(table,ascii)
     
       # Run table clean up
-      # self.clean_up(table)
+      self.clean_up(table)
     
     else: print 'Please check the file path {}'.format(ascii)
  
@@ -161,38 +159,44 @@ class get_db:
       The name of the table to remove duplicates, blanks, and data without source attributions.
     
     """
-    (columns, types), dup, ignore, I = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3], 1, [], ''
+    # Get the table info and all the records
+    columns, types, required = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:4]
+    records = self.query("SELECT * FROM {}".format(table), fmt='table')
+    duplicate, ignore, command = 1, [], ''
     
-    # Delete blank records, exact duplicates, or data without a source_id
-    self.modify("DELETE FROM {0} WHERE ({1})".format(table, columns[1]+' IS NULL' if len(columns)==2 else (' IS NULL AND '.join(columns[1:])+' IS NULL')))
+    # Remove records with missing required values
+    req_keys = columns[np.where(required)]
+    self.modify("DELETE FROM {0} WHERE {1}".format(table, ' OR '.join([i+' IS NULL' for i in req_keys])))
+    self.modify("DELETE FROM {0} WHERE {1}".format(table, ' OR '.join([i+" IN ('null','None','')" for i in req_keys])))
+    
+    # Remove exact duplicates
     self.modify("DELETE FROM {0} WHERE id NOT IN (SELECT min(id) FROM {0} GROUP BY {1})".format(table,', '.join(columns[1:])))
-    if 'source_id' in columns: self.list("DELETE FROM {0} WHERE source_id IS NULL OR source_id IN ('null','None','')".format(table))
-    
-    if table in ['sources','spectra','photometry','spectral_types','radial_velocities','parallaxes','proper_motions']:
-      # Define columns to check for uniqueness
-      primary, secondary, ignore = ['flux','magnitude','parallax','spectral_type','proper_motion_ra','proper_motion_dec','radial_velocity'], ['band','regime'], []
-      
-      # Find non-unique records and run astrodb.compare_records()
-      while dup:
-        # Check SOURCES table for records with similar RA and Dec but different ids that are not companions or system components.
-        if table=='sources': dup = self.query(  "SELECT t1.*, t2.* FROM sources t1 JOIN sources t2 WHERE t1.id!=t2.id \
-                                                AND (t1.ra BETWEEN t2.ra-0.0007 AND t2.ra+0.0007) AND (t1.dec BETWEEN t2.dec-0.00077 AND t2.dec+0.0007)\
-                                                {}".format(' AND '+' AND '.join(['(t1.id NOT IN ({0}) AND t2.id NOT IN ({0}))'.format(','.join(map(str,i))) for i in ignore]) if ignore else ''), fetch='one')
 
-        # Check all other tables for records with identical primary and secondary column values but different ids.        
-        else: dup = self.query("SELECT t1.*, t2.* FROM {0} AS t1 JOIN {0} AS t2 ON t1.source_id=t2.source_id WHERE t1.id!=t2.id AND t1.{1}=t2.{1}{2}{3}".format(table, [c for c in columns if c in primary].pop(), ' AND t1.{0}=t2.{0}'.format([c for c in columns if c in secondary].pop()) if [c for c in columns if c in secondary] else '', ' AND '+' AND '.join(['(t1.id NOT IN ({0}) AND t2.id NOT IN ({0}))'.format(','.join(map(str,i))) for i in ignore]) if ignore else ''), fetch='one')        
-        
-        # Compare potential duplicates and prompt user for action on each
-        if dup and dup[:len(dup)/2][0]!=dup[len(dup)/2:][0]:
-          I = self.compare_records(self, table, columns, dup[:len(dup)/2], dup[len(dup)/2:], delete=True)
-          if isinstance(I,list): ignore.append(I)
-          elif I=='undo': pass # Add this functionality!
-          elif I=='abort': break
-          else: pass
-    
-    # Finish or abort table merge
-    if I=='abort': 
-      print '\nAborted merge of {} table. Undoing all changes.\n'.format(table.upper())
+    # Check for records with identical required values but different ids.            
+    req_keys = columns[np.where(np.logical_and(required,columns!='id'))]
+    while duplicate:
+      # Pull out duplicates one by one
+      print "SELECT t1.*, t2.* FROM {0} t1 JOIN {0} t2 ON t1.source_id=t2.source_id WHERE t1.id!=t2.id AND {1}{2}"\
+                              .format(table, ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]), \
+                              ' AND '+'t1.id NOT IN ({0}) AND t2.id NOT IN ({0})'.format(','.join(map(str,ignore))) if ignore else '')
+      duplicate = self.query("SELECT t1.*, t2.* FROM {0} t1 JOIN {0} t2 ON t1.source_id=t2.source_id WHERE t1.id!=t2.id AND {1}{2}"\
+                              .format(table, ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]), \
+                              ' AND '+'t1.id NOT IN ({0}) AND t2.id NOT IN ({0})'.format(','.join(map(str,ignore))) if ignore else ''), \
+                              fetch='one', fmt='list')
+
+      # Compare potential duplicates and prompt user for action on each
+      if duplicate and duplicate[:len(duplicate)/2][0]!=duplicate[len(duplicate)/2:][0]:
+        print duplicate[:len(duplicate)/2]
+        print duplicate[len(duplicate)/2:]
+        command = self.compare_records(self, table, columns[1:], duplicate[:len(duplicate)/2], duplicate[len(duplicate)/2:], delete=True)
+        if isinstance(command,list): ignore.append(I)
+        elif command=='undo': pass # Add this functionality!
+        elif command=='abort': break
+        else: pass
+
+    # Finish or abort table clean up
+    if command=='abort': 
+      print '\nAborted clean up of {} table.\n'.format(table.upper())
       return 'abort'
     else: print 'Finished clean up on {} table.'.format(table.upper())
 
@@ -217,13 +221,12 @@ class get_db:
     
     """
     # Print the old and new records suspectred of being duplicates
-    pold, pnew = ['{:.3g}...{:.3g}'.format(i[0],i[-1]) if isinstance(i, np.ndarray) else i for i in old], ['{:.3g}...{:.3g}'.format(i[0],i[-1]) if isinstance(i, np.ndarray) else i for i in new]
-    pprint(np.asarray([pold,pnew]), names=columns)
+    pprint(np.asarray([old,new]), names=columns)
 
     # Print the command key
     replace = raw_input("Keep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(old[0]))
     while replace.lower() in columns or replace.lower()=='help':
-      if replace.lower() in columns: pprint(np.asarray([[i for idx,i in enumerate(pold) if idx in [0,columns.index(replace.lower())]],[i for idx,i in enumerate(pnew) if idx in [0,columns.index(replace.lower())]]]), names=['id',replace.lower()])    
+      if replace.lower() in columns: pprint(np.asarray([[i for idx,i in enumerate(old) if idx in [0,columns.index(replace.lower())]],[i for idx,i in enumerate(new) if idx in [0,columns.index(replace.lower())]]]), names=['id',replace.lower()])    
       elif replace.lower()=='help': pprint(np.asarray([['-'*30,'-'*100],['[column name]','Display full record entry for that column without taking action'],['k','Keep both records and assign second one new id if necessary'],['r','Replace all columns of first record with second record values'],['r [column name] [column name]...','Replace specified columns of first record with second record values'],['c','Complete empty columns of first record with second record values where possible'],['[Enter]','Keep first record and delete second'],['abort','Abort merge of current table, undo all changes, and proceed to next table']]), names=['Command','Result'])
       replace = raw_input("Keep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(old[0]))
 
@@ -452,7 +455,7 @@ class get_db:
       con.modify("DETACH DATABASE c"), self.modify("DETACH DATABASE c"), con.modify("DETACH DATABASE m"), self.modify("DETACH DATABASE m"), con.modify.close()
     else: print "File '{}' not found!".format(conflicted)
 
-  def modify(self, SQL, params='', verbose=False):
+  def modify(self, SQL, params=''):
     """
     Wrapper for CRUD operations to make them distinct from queries and automatically pass commit() method to cursor.
     
@@ -462,16 +465,18 @@ class get_db:
       The SQL query to execute
     params: sequence
       Mimicks the native parameter substitution of sqlite3
-    verbose: bool
-      Print the number of modified records
     """
     try:
+      
+      # Make sure the database isn't locked
+      self.conn.commit()
+      
       if SQL.lower().startswith('select'):
         print 'Use self.query method for queries.'
       else:
         self.list(SQL, params)
         self.conn.commit()
-        if verbose: print 'Number of records modified: {}'.format(self.query("SELECT changes()", fetch='one')[0])
+        # print 'Number of records modified: {}'.format(self.query("SELECT changes()", fetch='one')[0])
     except IOError:
       print 'Could not execute! Please check the query syntax and parameters format.'
 
@@ -819,3 +824,5 @@ def _autofill_spec_record(record):
       except KeyError: pass
 
   return record
+  
+type_dict = {'INTEGER':np.dtype('int64'), 'REAL':np.dtype('float64'), 'TEXT':np.dtype('S64'), 'ARRAY':np.dtype('object'), 'SPECTRUM':np.dtype('S128')}
