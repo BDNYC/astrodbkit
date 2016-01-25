@@ -19,6 +19,6 @@ db = astrodb.get_db(dbpath)
 
 ## Need a database?
 
-To use the BDNYC Database, download the latest data release from [the BDNYCdb repo on Github](https://bdnyc.org/BDNYCdb).
+To use the BDNYC Database, download the latest data release from [the BDNYCdb repo on Github](https://github.com/BDNYC/BDNYCdb.git).
 
 ## Enjoy!
