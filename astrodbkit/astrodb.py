@@ -318,12 +318,15 @@ class get_db:
         # Get the columns, pull out redundant ones, and query the table for this source's data
         columns = self.query("PRAGMA table_info({})".format(table), unpack=True)[1]
         columns = columns[np.where(np.logical_and(columns!='spectrum',columns!='source_id'))]
-        try: data = self.query("SELECT {} FROM {} WHERE source_id={}".format(','.join(columns),table,source_id), fmt='table')
+        try: 
+          id = 'id' if table.lower()=='sources' else 'source_id'
+          data = self.query("SELECT {} FROM {} WHERE {}={}".format(','.join(columns),table,id,source_id), fmt='table')
         except: data = None
         
         # If there's data for this table, save it
         if data: 
           data_tables[table] = data
+          data = data[list(columns)]
           pprint(data, title=table.upper())
         
       if plot:
@@ -582,7 +585,7 @@ class get_db:
       except IOError: print "Could not plot spectrum {}".format(spectrum_id); plt.close()
     else: print "No spectrum {} in the SPECTRA table.".format(spectrum_id)
 
-  def query(self, SQL, params='', fmt='array', fetch='all', unpack=False):
+  def query(self, SQL, params='', fmt='array', fetch='all', unpack=False, export=''):
     """
     Wrapper for cursors so data can be retrieved as a list or dictionary from same method
     
@@ -596,6 +599,8 @@ class get_db:
       Returns the data as a dictionary, list, array, or astropy.table given 'dict', 'list', 'array', 'table'
     unpack: bool
       Returns the transpose of the data
+    export: str
+      The file path of the ascii file to which the data should be exported
       
     Returns
     -------
@@ -625,7 +630,9 @@ class get_db:
           # Turn back into list if necessary
           if fmt.lower()=='list': result = list(result)
         
-        return result
+        # Print the results
+        if export: ii.write(result, export, Writer=ii.FixedWidthTwoLine, fill_values=[('None', '-')])        
+        else: return result
           
       else:
         print 'Queries must begin with a SELECT or PRAGMA statement. For database modifications use self.modify() method.'  
