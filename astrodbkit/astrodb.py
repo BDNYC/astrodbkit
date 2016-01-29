@@ -631,7 +631,15 @@ class get_db:
           if fmt.lower()=='list': result = list(result)
         
         # Print the results
-        if export: ii.write(result, export, Writer=ii.FixedWidthTwoLine, fill_values=[('None', '-')])        
+        if export:
+          # If .vot or .xml, assume VOTable export with votools
+          if export.lower().endswith('xml') or export.lower().endswith('vot'):
+            from . import votools
+            print 'Generating VOTable'
+            voresult = self.dict(SQL, params).fetchall()
+            votools.dict_tovot(voresult, export, phot=True, binary=True)
+          else:
+            ii.write(result, export, Writer=ii.FixedWidthTwoLine, fill_values=[('None', '-')])
         else: return result
           
       else:
