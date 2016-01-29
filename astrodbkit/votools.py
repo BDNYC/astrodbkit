@@ -161,6 +161,10 @@ def photparse(tab):
 
     """
 
+    # Check that source_id column is present
+    if 'source_id' not in tab[0].keys():
+        raise KeyError('phot=TRUE requires the source_id columb be included')
+
     # Loop through the table and grab unique band names and source IDs
     uniqueid = []
     for i in range(len(tab)):
