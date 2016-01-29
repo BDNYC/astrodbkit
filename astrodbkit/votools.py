@@ -32,7 +32,7 @@ def table_add(tab, data, col):
 
         # If the particular key is not present, use a place-holder value (used for photometry tables)
         if col not in data[i]:
-            temp = -999.
+            temp = ''
         else:
             temp = data[i][col]
 
@@ -43,7 +43,6 @@ def table_add(tab, data, col):
 
     print 'Adding column', col
     tab.add_column(Column(x, name=col))
-
 
 def dict_tovot(tabdata, tabname='votable.xml', phot=False, binary=True):
     """
