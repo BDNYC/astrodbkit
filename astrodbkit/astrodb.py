@@ -634,10 +634,10 @@ class get_db:
         # Print the results
         if export:
           # If .vot or .xml, assume VOTable export with votools
-          if export.lower().endswith('xml') or export.lower().endswith('vot'):
+          if export.lower().endswith('.xml') or export.lower().endswith('.vot'):
             print 'Generating VOTable'
             voresult = self.dict(SQL, params).fetchall()
-            votools.dict_tovot(voresult, export, phot=False, binary=True)
+            votools.dict_tovot(voresult, export)
           else:
             ii.write(result, export, Writer=ii.FixedWidthTwoLine, fill_values=[('None', '-')])
         else: return result
