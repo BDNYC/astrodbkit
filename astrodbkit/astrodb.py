@@ -57,7 +57,7 @@ class get_db:
     
     else: print "Sorry, no such file '{}'".format(dbpath)
 
-  def add_data(self, ascii, table, delimiter='|', multiband=False):
+  def add_data(self, ascii, table, delimiter='|', bands=''):
     """
     Adds data in **ascii** file to the specified database **table**. Note column names (row 1 of ascii file) must match table fields to insert, however order and completeness don't matter.
     
@@ -69,12 +69,8 @@ class get_db:
       The name of the table into which the data should be inserted
     delimiter: str
       The string to use as the delimiter when parsing the ascii file
-    multiband: bool
-      Digest columns of multiple photometric measurements (e.g. J, H, Ks) into individual rows of data for database insertion
-
-    Returns
-    -------
-    None
+    bands: sequence
+      Sequence of band to look for in the data header when digesting columns of multiple photometric measurements (e.g. ['MKO_J','MKO_H','MKO_K']) into individual rows of data for database insertion
     
     """
     if os.path.isfile(ascii):
@@ -87,16 +83,7 @@ class get_db:
       new_records = at.Table(names=columns, dtype=[type_dict[t] for t in types])
     
       # If a row contains photometry for multiple bands, use the *multiband argument and execute this
-      if multiband and table.lower()=='photometry':    
-      
-        # Recognized filters for multiband photometry upload. Update this to pull from managed list such as SVO Filter Profile Service
-        bands = ['HST_F336W', 'GALEX_FUV', 'DES_g', 'HST_F775W', 'HST_F190N', 'DES_r', 'MIPS_[24]', 'HST_F090M', \
-                'GAIA_BP', 'HST_F215N', 'GAIA_RP', 'IRAC_[8]', 'HST_F140W', 'GALEX_NUV', 'DENIS_J', 'DENIS_I', \
-                'HST_F673N', 'HST_F164N', 'SDSS_r', 'HST_F170M', 'DES_Y', 'WISE_W3', 'HST_F475W', 'MKO_J', 'JOHNSON_B', \
-                'DENIS_Ks', 'GAIA_G', 'COUSINS_I', '2MASS_H', '2MASS_J', 'HST_F555W', '2MASS_Ks', 'IRAC_[3.6]', 'COUSINS_R', \
-                'JOHNSON_U', 'JOHNSON_V', 'HST_F110W', 'HST_F625W', 'MKO_K', 'IRAC_[5.8]', 'MKO_Y', 'SDSS_g', 'DES_u', 'SDSS_i', \
-                'HST_F656N', 'DES_z', 'HST_F850LP', 'FS_J1', 'FS_J2', 'FS_J3', 'HST_F390N', 'MKO_M', 'WISE_W4', 'SDSS_u', \
-                'WISE_W2', 'WISE_W1', 'MKO_H', 'DES_i', 'IRAC_[4.5]', 'SDSS_z', 'MKO_L']
+      if bands and table.lower()=='photometry':    
       
         # Pull out columns that are band names
         for b in list(set(bands)&set(data.colnames)):
