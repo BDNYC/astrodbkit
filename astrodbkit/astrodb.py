@@ -304,8 +304,9 @@ class get_db:
       for table in ['sources']+[t for t in self.query("SELECT * FROM sqlite_master WHERE type='table'", unpack=True)[1] if t!='sources']:
         
         # Get the columns, pull out redundant ones, and query the table for this source's data
-        columns = self.query("PRAGMA table_info({})".format(table), unpack=True)[1]
-        columns = columns[np.where(np.logical_and(columns!='spectrum',columns!='source_id'))]
+        columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
+        columns = columns[(types=='REAL')|(types=='INTEGER')|(types=='TEXT')]
+
         try: 
           id = 'id' if table.lower()=='sources' else 'source_id'
           data = self.query("SELECT {} FROM {} WHERE {}={}".format(','.join(columns),table,id,source_id), fmt='table')
