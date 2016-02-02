@@ -4,6 +4,7 @@
 import io, os, sys, itertools, sqlite3, warnings
 import numpy as np, matplotlib.pyplot as plt
 import astropy.io.fits as pf, astropy.io.ascii as ii, astropy.table as at
+from . import votools # for exporing votables
 warnings.simplefilter('ignore')
 
 def create_database(dbpath):
@@ -631,7 +632,14 @@ class get_db:
           if fmt.lower()=='list': result = list(result)
         
         # Print the results
-        if export: ii.write(result, export, Writer=ii.FixedWidthTwoLine, fill_values=[('None', '-')])        
+        if export:
+          # If .vot or .xml, assume VOTable export with votools
+          if export.lower().endswith('.xml') or export.lower().endswith('.vot'):
+            print 'Generating VOTable'
+            voresult = self.dict(SQL, params).fetchall()
+            votools.dict_tovot(voresult, export)
+          else:
+            ii.write(result, export, Writer=ii.FixedWidthTwoLine, fill_values=[('None', '-')])
         else: return result
           
       else:
