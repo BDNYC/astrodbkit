@@ -55,8 +55,8 @@ Contents
 .. toctree::
    :maxdepth: 2
 
-   astrodbkit.astrodb
-   astrodbkit.votools
+   astrodb
+   votools
 
 Indices and tables
 
