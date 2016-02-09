@@ -49,23 +49,6 @@ Now that you have the database at your fingertips, you’ll want to get some inf
 
 .. _Here is a detailed post about how to write a SQL query: http://www.bdnyc.org/?p=898
 
-The result of a SQL query is a Numpy array with the data requested from each record. For example, we can get a source's photometry from the PHOTOMETRY table with::
-
-    db.query("select band,magnitude from photometry where source_id=202")
-
-which gives the output::
-
-    np.array([['J', 13.526],['H', 12.807],['Ks', 12.503],['W1', 12.486],['W2', 12.386],['W3', 12.313],['W4', 8.525]])
-
-Alternatively, we can have this data returned as a Python dictionary with::
-
-    db.query("select band,magnitude from photometry where source_id=202", DICT=True)
-
-whose output looks like::
-
-    [{'band': 'J', 'magnitude': 13.526},{'band': 'H', 'magnitude': 12.807},{'band': 'Ks', 'magnitude': 12.503},{'band': 'W1', 'magnitude': 12.486},{'band': 'W2', 'magnitude': 12.386},{'band': 'W3', 'magnitude': 12.313},{'band': 'W4', 'magnitude': 8.525}]
-
-
 Contents
 ========
 
