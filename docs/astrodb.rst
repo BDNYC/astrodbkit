@@ -1,7 +1,7 @@
 astrodb module
 ==============
 
-.. automodule:: astrodbkit.astrodb
+.. automodule:: astrodbkit.astrodbkit.astrodb
    :members:
    :undoc-members:
    :show-inheritance:
