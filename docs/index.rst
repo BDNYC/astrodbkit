@@ -6,42 +6,63 @@
 Welcome to astrodbkit's documentation!
 ======================================
 
-The BDNYC Database is an advanced SQL relational database of published spectra, photometry and astrometry for over 1300 very low-mass stars, brown dwarfs and planetary mass objects.
-
-This documentation describes a tool kit of classes, methods and functions useful for CRUD operations and analysis of data from The BDNYC Data Archive.
+This documentation describes a tool kit of classes, methods and functions useful for CRUD operations and analysis of data from an SQL database.
 
 Getting Started
 ===============
 
-To install, just do::
+To install, do::
 
     pip install astrodbkit
 
-This package includes the initial release of the BDNYC Database, which contains the astrometry, photometry and spectra for the 198 objects in the `Filippazzo et al. (2015)`_ sample.
+Creating a Database
+===================
 
+To create a database from scratch, do::
+
+    dbpath = '/desired/path/to/my_new_database.db'
+    astrodb.create_database(dbpath)
+    
+Alternatively, you can `download and use the BDNYC Database`_, which contains the astrometry, photometry and spectra for the 198 objects in the `Filippazzo et al. (2015)`_ sample.
+
+.. _download and use the BDNYC Database: https://github.com/BDNYC/BDNYCdb
 .. _Filippazzo et al. (2015): http://adslabs.org/adsabs/abs/2015ApJ...810..158F/
 
 .. note:: For access to the full dataset, an email request must be made to a BDNYC group admin.
 
 Accessing the Database
-======================
+====================
 
 To start using the database, launch iPython, import the module, then initialize the database with the :class:`astrodb.get_db()` class like so::
 
-    from astrodbkit import astrodb
-    db = astrodb.get_db()
+    db = astrodb.get_db(dbpath)
 
-
-Voila! You can see an inventory of all data for a specific source by passing a *source_id* to the :py:meth:`~astrodb.get_db.inventory` method::
-
-    db.inventory(86)
-
-This will also plot all available spectra for that source for visual inspection if you set **plot=True**.
+Voila! 
 
 Querying the Database
 =====================
 
-Now that you have the database at your fingertips, you’ll want to get some info out of it. To do this, you can pass SQL queries wrapped in double-quotes (") to the :py:meth:`~astrodb.get_db.query` method::
+Now that you have the database at your fingertips, you’ll want to get some info out of it. 
+
+You can see an inventory of all data for a specific source by passing an integer id to the :py:meth:`~astrodb.get_db.inventory` method::
+
+    data = db.inventory(86)
+
+This will retrieve the data across all tables with the specified source_id for visual inspection. Setting *fetch=True* will return the data as a dictionary of Astropy tables so that table and column keys can be used to access the results. For example::
+
+    data['photometry'][['band','magnitude','magnitude_unc']]
+
+will return a table of the band, magnitude and uncertainty for all records in the sources table with that source_id.
+
+You can search any table in the database with the :py:meth:`~astrodb.get_db.identify` method by supplying a string, integer, or (ra,dec) coordinates along with the table to search. For example, if I want to find all the records in the SOURCES table in the HR 8799 system::
+
+    db.identify('8799','sources')
+    
+Or all the papers published by Joe Filippazzo::
+
+    db.identify('Fili','publications')
+
+You can also pass SQL queries wrapped in double-quotes (") to the :py:meth:`~astrodb.get_db.query` method::
 
     data = db.query( "SQL_query_goes_here" )
 

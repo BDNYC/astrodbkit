@@ -351,7 +351,7 @@ class get_db:
           if data: 
             data_tables[table] = data
             data = data[list(columns)]
-            pprint(data, title=table.upper())
+            if not fetch: pprint(data, title=table.upper())
         
         else: pass
         
@@ -378,18 +378,31 @@ class get_db:
     """
     if os.path.isfile(conflicted):
       # Load and attach master and conflicted databases
-      con, master, reassign = get_db(conflicted), self.list("PRAGMA database_list").fetchall()[0][2], {}
-      con.list("ATTACH DATABASE '{}' AS m".format(master)), self.list("ATTACH DATABASE '{}' AS c".format(conflicted)), con.list("ATTACH DATABASE '{}' AS c".format(conflicted)), self.list("ATTACH DATABASE '{}' AS m".format(master))
+      con, master, reassign = get_db(conflicted)  self.list("PRAGMA database_list").fetchall()[0][2], {}
+      con.list("ATTACH DATABASE '{}' AS m".format(master))
+      self.list("ATTACH DATABASE '{}' AS c".format(conflicted))
+      con.list("ATTACH DATABASE '{}' AS c".format(conflicted))
+      self.list("ATTACH DATABASE '{}' AS m".format(master))
       
       # Drop any backup tables from failed merges
       for table in tables: self.list("DROP TABLE IF EXISTS Backup_{0}".format(table))
       
       # Gather user data to add to CHANGELOG table
       import socket, datetime
-      user, machine_name, date, modified_tables = raw_input('Please enter your name : '), socket.gethostname(), datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), []
+      user = raw_input('Please enter your name : '), 
+      machine_name = socket.gethostname()
+      date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+      modified_tables = []
       
       # Print instructions for user
-      pprint(np.asarray([['-'*30,'-'*100],['[column name]','Display full record entry for that column without taking action'],['k','Keeps both records and assigns second one new id if necessary'],['r','Replaces all columns of first record with second record values'],['r [column name] [column name]...','Replaces specified columns of first record with second record values'],['c','Complete empty columns of first record with second record values where possible'],['[Enter]','Keep first record and delete second'],['abort','Abort merge of current table, undo all changes, and proceed to next table']]), names=['Command','Result'])
+      pprint(np.asarray([['[column name]','Display full record entry for that column without taking action'], \
+                         ['k','Keeps both records and assigns second one new id if necessary'], \
+                         ['r','Replaces all columns of first record with second record values'], \
+                         ['r [column name] [column name]...','Replaces specified columns of first record with second record values'], \
+                         ['c','Complete empty columns of first record with second record values where possible'], \
+                         ['[Enter]','Keep first record and delete second'],\
+                         ['abort','Abort merge of current table, undo all changes, and proceed to next table']]), \
+                         names=['Command','Result'])
       
       # Merge table by table, starting with SOURCES
       tables = tables or ['sources']+[t for t in zip(*self.list("SELECT * FROM sqlite_master WHERE name NOT LIKE '%Backup%' AND type='table'{}".format(" AND name IN ({})".format("'"+"','".join(tables)+"'") if tables else '')).fetchall())[1] if t!='sources']
@@ -399,11 +412,16 @@ class get_db:
                 
         if any([i not in columns for i in conflicted_cols]):
           # Abort table merge if conflicted has new columns not present in master. New columns must be added to the master database first via db.edit_columns().
-          print "\nMerge of {0} table aborted since conflicted copy has columns {1} not present in master.\nAdd new columns to master with BDdb.edit_columns() and try again.\n".format(table.upper(),[i for i in conflicted_cols if i not in columns])
+          print "\nMerge of {0} table aborted since conflicted copy has columns {1} not present in master.\nAdd new columns to master with astrodb.table() method and try again.\n".format(table.upper(),[i for i in conflicted_cols if i not in columns])
         
         else:
           # Add new columns from master table to conflicted table if necessary
-          if any([i not in conflicted_cols for i in columns]): con.modify("DROP TABLE IF EXISTS Conflicted_{0}".format(table)), con.modify("ALTER TABLE {0} RENAME TO Conflicted_{0}".format(table)), con.modify("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {}'.format(c,t) for c,t in zip(columns,types)]))), con.modify("INSERT INTO {0} ({1}) SELECT {1} FROM Conflicted_{0}".format(table, ','.join(conflicted_cols))), con.modify("DROP TABLE Conflicted_{0}".format(table))
+          if any([i not in conflicted_cols for i in columns]): 
+            con.modify("DROP TABLE IF EXISTS Conflicted_{0}".format(table))
+            con.modify("ALTER TABLE {0} RENAME TO Conflicted_{0}".format(table))
+            con.modify("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {}'.format(c,t) for c,t in zip(columns,types)])))
+            con.modify("INSERT INTO {0} ({1}) SELECT {1} FROM Conflicted_{0}".format(table, ','.join(conflicted_cols)))
+            con.modify("DROP TABLE Conflicted_{0}".format(table))
         
           # Pull unique records from conflicted table
           data = map(list, con.list("SELECT * FROM (SELECT 1 AS db, {0} FROM m.{2} UNION ALL SELECT 2 AS db, {0} FROM c.{2}) GROUP BY {1} HAVING COUNT(*)=1 AND db=2".format(','.join(columns),','.join(columns[1:]),table)).fetchall())
@@ -437,8 +455,12 @@ class get_db:
               abort = self.clean_up(table)
           
               # Undo all changes to table if merge is aborted. Otherwise, push table changes to master.
-              if abort: self.modify("DROP TABLE {0}".format(table)), self.modify("ALTER TABLE Backup_{0} RENAME TO {0}".format(table))
-              else: self.modify("DROP TABLE Backup_{0}".format(table)), modified_tables.append(table.upper())
+              if abort: 
+                self.modify("DROP TABLE {0}".format(table))
+                self.modify("ALTER TABLE Backup_{0} RENAME TO {0}".format(table))
+              else: 
+                self.modify("DROP TABLE Backup_{0}".format(table))
+                modified_tables.append(table.upper())
           
           else: print "{} tables identical.".format(table.upper())
       
