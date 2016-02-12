@@ -259,15 +259,17 @@ class get_db:
       if delete: self.modify("DELETE FROM {} WHERE id={}".format(table, new[0]))
       else: pass
     
-  def identify(self, search, table='sources', fetch=False):
+  def search(self, criterion, table, fetch=False):
     """
-    For **search** input of (ra,dec) decimal degree tuple, i.e. '(12.3456,-65.4321)', returns all sources within 1 arcminute.
-    For **search** input of text string, i.e. 'vb10', returns all sources with case-insensitive partial text matches in *names* or *designation* columns.
+    General search method for tables. For (ra,dec) input in decimal degrees, i.e. '(12.3456,-65.4321)', returns all sources within 1 arcminute.
+    For string input, i.e. 'vb10', returns all sources with case-insensitive partial text matches in 
+    columns with 'TEXT' data type. For integer input, i.e. 123, returns all exact matches of columns with
+    INTEGER data type.
     
     Parameters
     ----------
-    search: (str, tuple)
-      The text or coordinate tuple to search the SOURCES table with.
+    criterion: (str, int, tuple)
+      The text, integer, or coordinate tuple to search the table with.
     table: str
       The name of the table to search
     fetch: bool
@@ -277,38 +279,38 @@ class get_db:
     results = ''
     
     # Coordinate search
-    if isinstance(search,(tuple,list,np.ndarray)) and table=='sources':
+    if isinstance(criterion,(tuple,list,np.ndarray)) and table=='sources':
       try:
-        q = "SELECT * FROM sources WHERE ra BETWEEN "+str(search[0]-0.01667)+" AND "+str(search[0]+0.01667)+" AND dec BETWEEN "+str(search[1]-0.01667)+" AND "+str(search[1]+0.01667)
+        q = "SELECT * FROM sources WHERE ra BETWEEN "+str(criterion[0]-0.01667)+" AND "+str(criterion[0]+0.01667)+" AND dec BETWEEN "+str(criterion[1]-0.01667)+" AND "+str(criterion[1]+0.01667)
         results = self.query(q, fmt='table')
       except IOError:
-        print "Could not search SOURCES table by coordinates {}. Try again.".format(search)
+        print "Could not search SOURCES table by coordinates {}. Try again.".format(criterion)
     
     # Text string search of all columns with 'TEXT' data type
-    elif isinstance(search, (str,unicode)):
+    elif isinstance(criterion, (str,unicode)):
       try: 
         columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
-        q = "SELECT * FROM {} WHERE {}".format(table,' OR '.join([r"REPLACE("+c+r",' ','') like '%"+search.replace(' ','')+r"%'" for c,t in zip(columns,types) if t=='TEXT']))
+        q = "SELECT * FROM {} WHERE {}".format(table,' OR '.join([r"REPLACE("+c+r",' ','') like '%"+criterion.replace(' ','')+r"%'" for c,t in zip(columns,types) if t=='TEXT']))
         results = self.query(q, fmt='table')
       except IOError:
-        print "Could not search {} table by string {}. Try again.".format(table.upper(),search)
+        print "Could not search {} table by string {}. Try again.".format(table.upper(),criterion)
     
     # Integer id search
-    elif isinstance(search, int):
+    elif isinstance(criterion, int):
       try:
-        q = "SELECT * FROM {} WHERE id={}".format(table,str(search))
+        q = "SELECT * FROM {} WHERE id={}".format(table,str(criterion))
         results = self.query(q, fmt='table')
       except IOError:
-        print "Could not search {} table by id {}. Try again.".format(table.upper(),search)        
+        print "Could not search {} table by id {}. Try again.".format(table.upper(),criterion)        
     
     # Problem!
-    else: print "Could not search {} table by {}. Try again.".format(table.upper(),search)
+    else: print "Could not search {} table by {}. Try again.".format(table.upper(),criterion)
     
     # Return inventory if there is only one result, otherwise print all the results
     if results: 
       pprint(results, title=table.upper())
       if fetch: return results
-    else: print "No results found for {} in {} the table.".format(search,table.upper())
+    else: print "No results found for {} in {} the table.".format(criterion,table.upper())
       
   def inventory(self, source_id, plot=False, fetch=False):
     """
@@ -378,7 +380,7 @@ class get_db:
     """
     if os.path.isfile(conflicted):
       # Load and attach master and conflicted databases
-      con, master, reassign = get_db(conflicted)  self.list("PRAGMA database_list").fetchall()[0][2], {}
+      con, master, reassign = get_db(conflicted), self.list("PRAGMA database_list").fetchall()[0][2], {}
       con.list("ATTACH DATABASE '{}' AS m".format(master))
       self.list("ATTACH DATABASE '{}' AS c".format(conflicted))
       con.list("ATTACH DATABASE '{}' AS c".format(conflicted))
@@ -667,18 +669,26 @@ class get_db:
     else:
       constraints = ['UNIQUE NOT NULL']+(['']*len(columns)-1)
     if not len(columns)==len(types)==len(constraints):
-      print "Must provide equal length *table, *columns, and *constraints sequences.";  goodtogo = False
+      print "Must provide equal length *columns ({}), *types ({}), and *constraints ({}) sequences."\
+            .format(len(columns),len(types),len(constraints));  goodtogo = False
     
     if goodtogo:
+      tables = self.query("SELECT name FROM sqlite_master", unpack=True)[0]
+      
       # If the table exists, modify the columns
-      if table in zip(*self.list("SELECT name FROM sqlite_master").fetchall())[0] and not new_table:
+      if table in tables and not new_table:
+        
+        # Rename the old table and create a new one
         self.list("ALTER TABLE {0} RENAME TO TempOldTable".format(table))
         self.list("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {} {}'.format(c,t,r) for c,t,r in zip(columns,types,constraints)])))
-        self.list("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable".format(table, ','.join([c for c in list(zip(*self.list("PRAGMA table_info(TempOldTable)").fetchall())[1]) if c in columns])))
+        
+        # Populate the new table and drop the old one
+        old_columns = [c for c in self.query("PRAGMA table_info(TempOldTable)", unpack=True)[1] if c in columns]
+        self.list("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable".format(table, ','.join(old_columns)))
         self.list("DROP TABLE TempOldTable")
     
       # If the table does not exist and new_table is True, create it
-      elif table not in zip(*self.list("SELECT name FROM sqlite_master").fetchall())[0] and new_table:
+      elif table not in tables and new_table:
         self.list("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {} {}'.format(c,t,r) for c,t,r in zip(columns,types,constraints)])))
     
       # Otherwise the table to be modified doesn't exist or the new table to add already exists, so do nothing
@@ -686,7 +696,9 @@ class get_db:
         if new_table: print 'Table {} already exists. Set *new_table=False to modify.'.format(table.upper())
         else: print 'Table {} does not exist. Could not modify. Set *new_table=True to add a new table.'.format(table.upper())
         
-    else: print 'The {} table has not been {}. Please make sure your table columns, types, and constraints are formatted properly.'.format(table.upper(),'created' if new_table else 'modified')
+    else: print 'The {} table has not been {}. Please make sure your table columns, \
+                types, and constraints are formatted properly.'.format(table.upper(),\
+                'created' if new_table else 'modified')
 
   def _get_field_names(self, SQL):
     # If field names are given, sort so that they come out in the same order they are fetched
@@ -798,6 +810,11 @@ def convert_spectrum(File):
         self.path = path
   
   if isinstance(File,str):
+    
+    # Convert variable path to absolute path
+    if File.startswith('$'):
+      abspath = os.popen('echo {}'.format(File.split('/')[0])).read()[:-1]
+      if abspath: File = File.replace(File.split('/')[0],abspath)
     
     # For FITS files
     if File.endswith('.fits'):
