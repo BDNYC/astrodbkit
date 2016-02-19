@@ -31,7 +31,7 @@ Alternatively, you can `download and use the BDNYC Database`_, which contains th
 .. note:: For access to the full dataset, an email request must be made to a BDNYC group admin.
 
 Accessing the Database
-====================
+======================
 
 To start using the database, launch iPython, import the module, then initialize the database with the :class:`astrodb.get_db()` class like so::
 
