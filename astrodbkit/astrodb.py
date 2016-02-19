@@ -4,12 +4,12 @@
 import io, os, sys, itertools, sqlite3, warnings
 import numpy as np, matplotlib.pyplot as plt
 import astropy.io.fits as pf, astropy.io.ascii as ii, astropy.table as at
-from . import votools # for exporing votables
+import votools
 warnings.simplefilter('ignore')
 
 def create_database(dbpath):
   """
-  Create a new database at the given *dbpath.
+  Create a new database at the given dbpath
   
   Parameters
   ----------
