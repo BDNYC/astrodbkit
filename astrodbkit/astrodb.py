@@ -584,6 +584,23 @@ class get_db:
         try: ax.fill_between(spec.data[0], spec.data[1]-spec.data[2], spec.data[1]+spec.data[2], color=color, alpha=0.3), ax.set_xlim(X), ax.set_ylim(Y)
         except: print 'No uncertainty array for spectrum {}'.format(spectrum_id)
       except IOError: print "Could not plot spectrum {}".format(spectrum_id); plt.close()
+      except KeyError:
+        wav, flux, unc = i['wavelength'], i['flux'], i['unc']
+
+        # Draw the axes and add the metadata
+        if not overplot:
+          fig, ax = plt.subplots()
+          plt.rc('text', usetex=False)
+          ax.set_yscale('log', nonposy='clip'), plt.title('source_id = {}'.format(i['source_id']))
+          plt.figtext(0.15,0.88, '{}\n{}\n{}\n{}'.format(i['filename'],self.query("SELECT name FROM telescopes WHERE id={}".format(i['telescope_id']), fetch='one')[0] if i['telescope_id'] else '',self.query("SELECT name FROM instruments WHERE id={}".format(i['instrument_id']), fetch='one')[0] if i['instrument_id'] else '',i['obs_date']), verticalalignment='top')
+          ax.set_xlabel('[{}]'.format(i['wavelength_units'])), ax.set_ylabel('[{}]'.format(i['flux_units'])), ax.legend(loc=8, frameon=False)
+        else: ax = plt.gca()
+
+        # Plot the data
+        ax.loglog(wav, flux, c=color, label='spec_id: {}'.format(i['id']))
+        X, Y = plt.xlim(), plt.ylim()
+        try: ax.fill_between(wav, flux-unc, flux+unc, color=color, alpha=0.3), ax.set_xlim(X), ax.set_ylim(Y)
+        except: print 'No uncertainty array for spectrum {}'.format(spectrum_id)
     else: print "No spectrum {} in the SPECTRA table.".format(spectrum_id)
 
   def query(self, SQL, params='', fmt='array', fetch='all', unpack=False, export=''):
