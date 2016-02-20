@@ -1,3 +1,5 @@
 numpy
 astropy
 matplotlib
+astrodb
+votools
