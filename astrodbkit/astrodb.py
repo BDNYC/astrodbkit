@@ -4,12 +4,12 @@
 import io, os, sys, itertools, sqlite3, warnings
 import numpy as np, matplotlib.pyplot as plt
 import astropy.io.fits as pf, astropy.io.ascii as ii, astropy.table as at
-from . import votools # for exporing votables
+import votools
 warnings.simplefilter('ignore')
 
 def create_database(dbpath):
   """
-  Create a new database at the given *dbpath.
+  Create a new database at the given dbpath
   
   Parameters
   ----------
@@ -63,7 +63,9 @@ class get_db:
 
   def add_data(self, ascii, table, delimiter='|', bands=''):
     """
-    Adds data in **ascii** file to the specified database **table**. Note column names (row 1 of ascii file) must match table fields to insert, however order and completeness don't matter.
+    Adds data in **ascii** file to the specified database **table**. 
+    Note column names (row 1 of ascii file) must match table fields to insert, 
+    however order and completeness don't matter.
     
     Parameters
     ----------
@@ -157,7 +159,7 @@ class get_db:
     metadata = self.query("PRAGMA table_info({})".format(table), fmt='table')
     columns, types, required = [np.array(metadata[n]) for n in ['name','type','notnull']]
     records = self.query("SELECT * FROM {}".format(table), fmt='table')
-    duplicate, ignore, command = 1, [], ''
+    duplicate, ignore, command = [1], [], ''
     
     # Remove records with missing required values
     req_keys = columns[np.where(required)]
@@ -169,29 +171,32 @@ class get_db:
 
     # Check for records with identical required values but different ids.            
     req_keys = columns[np.where(np.logical_and(required,columns!='id'))]
-    while duplicate:
+
+    while any(duplicate):
       # Pull out duplicates one by one
       duplicate = self.query("SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.source_id=t2.source_id WHERE t1.id!=t2.id AND {1}{2}"\
                               .format(table, ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]), \
                               ' AND '+'t1.id NOT IN ({0}) AND t2.id NOT IN ({0})'.format(','.join(map(str,ignore))) if ignore else ''), \
-                              fetch='one', fmt='list')
+                              fetch='one')
 
       # Compare potential duplicates and prompt user for action on each
-      if duplicate:        
+      try:
+        
         # Run record matches through comparison and return the command 
-        command = self._compare_records(self, table, duplicate, delete=True)
+        command = self._compare_records(table, duplicate, delete=True)
         
         # Add acceptible duplicates to ignore list or abort
-        if isinstance(command,list): ignore.append(I)
+        if command=='keep': ignore += duplicate
         elif command=='undo': pass # Add this functionality!
         elif command=='abort': break
         else: pass
+      except: break
 
     # Finish or abort table clean up
     if command=='abort': 
-      print '\nAborted clean up of {} table.\n'.format(table.upper())
+      print '\nAborted clean up of {} table.'.format(table.upper())
       return 'abort'
-    else: print 'Finished clean up on {} table.'.format(table.upper())
+    else: print '\nFinished clean up on {} table.'.format(table.upper())
 
   def _compare_records(self, table, duplicate, options=['r','c','k','sql'], delete=False):
     """
@@ -210,106 +215,57 @@ class get_db:
     
     """
     # Print the old and new records suspectred of being duplicates
-    data = self.query("SELECT * FROM {} WHERE id IN ({})".format(table,','.join(map(str,duplicate))), fmt='table', pprint=True)
+    data = self.query("SELECT * FROM {} WHERE id IN ({})".format(table,','.join(map(str,duplicate))), fmt='table', verbose=True)
+    columns = data.colnames[1:]
+    old, new = [[data[n][k] for k in columns[1:]] for n in [0,1]]
 
     # Print the command key
-    replace = raw_input("Keep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(old[0]))
-    while replace.lower() in columns or replace.lower()=='help':
-      if replace.lower() in columns: pprint(np.asarray([[i for idx,i in enumerate(old) if idx in [0,columns.index(replace.lower())]],[i for idx,i in enumerate(new) if idx in [0,columns.index(replace.lower())]]]), names=['id',replace.lower()])    
-      elif replace.lower()=='help': pprint(np.asarray([['-'*30,'-'*100],['[column name]','Display full record entry for that column without taking action'],['k','Keep both records and assign second one new id if necessary'],['r','Replace all columns of first record with second record values'],['r [column name] [column name]...','Replace specified columns of first record with second record values'],['c','Complete empty columns of first record with second record values where possible'],['[Enter]','Keep first record and delete second'],['abort','Abort merge of current table, undo all changes, and proceed to next table']]), names=['Command','Result'])
-      replace = raw_input("Keep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(old[0]))
+    replace = raw_input("\nKeep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(duplicate[0])).lower()
+    while replace in columns or replace=='help':
+      if replace in columns: pprint(np.asarray([[i for idx,i in enumerate(old) if idx in [0,columns.index(replace)]],[i for idx,i in enumerate(new) if idx in [0,columns.index(replace)]]]), names=['id',replace])    
+      elif replace=='help': _help()
+      replace = raw_input("\nKeep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(duplicate[0]))
 
-    if replace and (all([i in list(columns)+options for i in replace.lower().split()]) or replace.lower().startswith('sql')):
+    if replace in options:
       
       # Replace the old record with the new record
-      if replace.lower().startswith('r') and 'r' in options:
-        if replace.lower()=='r':
-          sure = raw_input('Are you sure you want to replace record {} with record {}? [y/n] : '.format(old[0],new[0]))
-          if sure.lower()=='y':
-            empty_cols, new_vals = zip(*[['{}=?'.format(e),n] for e,n in zip(columns[1:],new[1:])])
-            if delete: self.modify("DELETE FROM {} WHERE id={}".format(table, new[0]))
-            self.modify("UPDATE {} SET {} WHERE id={}".format(table, ','.join(empty_cols), old[0]), tuple(new_vals))
-        elif all([i in list(columns)+options for i in replace.lower().split()]):
-          empty_cols, new_vals = zip(*[['{}=?'.format(e),n] for e,n in zip(columns[1:],new[1:]) if e in replace])
-          if empty_cols:
-            if delete: self.modify("DELETE FROM {} WHERE id={}".format(table, new[0]))
-            self.modify("UPDATE {} SET {} WHERE id={}".format(table, ','.join(empty_cols), old[0]), tuple(new_vals))
+      if replace=='r':
+        sure = raw_input('Are you sure you want to replace record {} with record {}? [y/n] : '.format(*duplicate))
+        if sure.lower()=='y':
+          self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[1]))
+          self.modify("UPDATE {} SET id={} WHERE id={}".format(table, duplicate[0], duplicate[1]))
+      
+      # Replace specific records
+      elif replace.startswith('r') and all([i in list(columns)+options for i in replace.split()]):
+        empty_cols, new_vals = zip(*[['{}=?'.format(e),n] for e,n in zip(columns,new) if e in replace])
+        if empty_cols:
+          if delete: self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[1]))
+          self.modify("UPDATE {} SET {} WHERE id={}".format(table, ','.join(empty_cols), duplicate[0]), tuple(new_vals))
       
       # Complete the old record with any missing data provided in the new record, then delete the new record
-      elif replace.lower()=='c' and 'c' in options:
+      elif replace=='c':
         try:
-          empty_cols, new_vals = zip(*[['{}=?'.format(e),n] for e,o,n in zip(columns[1:],old[1:],new[1:]) if repr(o).lower() in ['','none','null'] and repr(n).lower() not in ['','none','null']])
-          if delete: self.modify("DELETE FROM {} WHERE id={}".format(table, new[0]))
-          self.modify("UPDATE {} SET {} WHERE id={}".format(table, ','.join(empty_cols), old[0]), tuple(new_vals))
+          empty_cols, new_vals = zip(*[['{}=?'.format(e),n] for e,o,n in zip(columns,old,new) if repr(o).lower() in ['','none','null'] and repr(n).lower() not in ['','none','null']])
+          self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[1]))
+          self.modify("UPDATE {} SET {} WHERE id={}".format(table, ','.join(empty_cols), duplicate[0]), tuple(new_vals))
         except:
-          if delete: self.modify("DELETE FROM {} WHERE id={}".format(table, new[0]))
-          else: pass
-      elif replace.lower()=='k' and 'k' in options: return [old[0],new[0]]
+          pass
+      
+      # Keep both records
+      elif replace=='k': return 'keep'
       
       # Execute raw SQL
-      elif replace.lower().startswith('sql ') and 'sql' in options: 
+      elif replace.startswith('sql ') and 'sql' in options: 
         try: self.modify(replace[4:])
-        except: pass 
+        except: print 'Invalid SQLite statement: {}'.format(replace[4:])
     
     # Abort the current database clean up
-    elif replace.lower()=='abort': return 'abort'
+    elif replace=='abort': return 'abort'
     
     # Delete the current record if *delete=True
     elif not replace:
-      if delete: self.modify("DELETE FROM {} WHERE id={}".format(table, new[0]))
-      else: pass
-    
-  def identify(self, search, table='sources', fetch=False):
-    """
-    For **search** input of (ra,dec) decimal degree tuple, i.e. '(12.3456,-65.4321)', returns all sources within 1 arcminute.
-    For **search** input of text string, i.e. 'vb10', returns all sources with case-insensitive partial text matches in *names* or *designation* columns.
-    
-    Parameters
-    ----------
-    search: (str, tuple)
-      The text or coordinate tuple to search the SOURCES table with.
-    table: str
-      The name of the table to search
-    fetch: bool
-      Return the results of the query as an Astropy table
-      
-    """
-    results = ''
-    
-    # Coordinate search
-    if isinstance(search,(tuple,list,np.ndarray)) and table=='sources':
-      try:
-        q = "SELECT * FROM sources WHERE ra BETWEEN "+str(search[0]-0.01667)+" AND "+str(search[0]+0.01667)+" AND dec BETWEEN "+str(search[1]-0.01667)+" AND "+str(search[1]+0.01667)
-        results = self.query(q, fmt='table')
-      except IOError:
-        print "Could not search SOURCES table by coordinates {}. Try again.".format(search)
-    
-    # Text string search of all columns with 'TEXT' data type
-    elif isinstance(search, (str,unicode)):
-      try: 
-        columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
-        q = "SELECT * FROM {} WHERE {}".format(table,' OR '.join([r"REPLACE("+c+r",' ','') like '%"+search.replace(' ','')+r"%'" for c,t in zip(columns,types) if t=='TEXT']))
-        results = self.query(q, fmt='table')
-      except IOError:
-        print "Could not search {} table by string {}. Try again.".format(table.upper(),search)
-    
-    # Integer id search
-    elif isinstance(search, int):
-      try:
-        q = "SELECT * FROM {} WHERE id={}".format(table,str(search))
-        results = self.query(q, fmt='table')
-      except IOError:
-        print "Could not search {} table by id {}. Try again.".format(table.upper(),search)        
-    
-    # Problem!
-    else: print "Could not search {} table by {}. Try again.".format(table.upper(),search)
-    
-    # Return inventory if there is only one result, otherwise print all the results
-    if results: 
-      pprint(results, title=table.upper())
-      if fetch: return results
-    else: print "No results found for {} in {} the table.".format(search,table.upper())
-      
+      self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[1]))
+          
   def inventory(self, source_id, plot=False, fetch=False):
     """
     Prints a summary of all objects in the database. Input string or list of strings in **ID** or **unum** for specific objects.
@@ -330,9 +286,11 @@ class get_db:
     
     """
     data_tables = {}
-    try:
-      for table in ['sources']+[t for t in self.query("SELECT * FROM sqlite_master WHERE type='table'", unpack=True)[1] if t not in ['sources','sqlite_sequence']]:
+
+    for table in ['sources']+[t for t in zip(*self.list("SELECT * FROM sqlite_master WHERE type='table'"))[1] if t not in ['sources','sqlite_sequence']]:
         
+      try:
+          
         # Get the columns, pull out redundant ones, and query the table for this source's data
         columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
         
@@ -345,20 +303,28 @@ class get_db:
           try: 
             id = 'id' if table.lower()=='sources' else 'source_id'
             data = self.query("SELECT {} FROM {} WHERE {}={}".format(','.join(columns),table,id,source_id), fmt='table')
-          except: data = None
+            
+            if not data and table.lower()=='sources':
+              print 'No source with id {}. Try db.search() to search the database for a source_id.'.format(source_id)
+            
+          except: 
+            data = None
         
           # If there's data for this table, save it
           if data: 
             data_tables[table] = data
             data = data[list(columns)]
-            if not fetch: pprint(data, title=table.upper())
+            if not fetch: pprint(data, title=table.upper())          
         
+          # Plot all the spectra
+          if plot and table.lower()=='spectra' and data:
+            for i in self.query("SELECT id FROM spectra WHERE source_id={}".format(source_id), unpack=True)[0]: 
+              self.plot_spectrum(i)
+              
         else: pass
-        
-      if plot:
-        for i in self.query("SELECT id FROM spectra WHERE source_id={}".format(source_id), unpack=True)[0]: self.plot_spectrum(i)
     
-    except: print 'No source with id {}. Try db.identify() to search the database for a source_id.'.format(source_id)
+      except:
+        print 'Could not retrieve data from {} table.'.format(table.upper())
     
     if fetch: return data_tables
 
@@ -378,14 +344,14 @@ class get_db:
     """
     if os.path.isfile(conflicted):
       # Load and attach master and conflicted databases
-      con, master, reassign = get_db(conflicted)  self.list("PRAGMA database_list").fetchall()[0][2], {}
-      con.list("ATTACH DATABASE '{}' AS m".format(master))
-      self.list("ATTACH DATABASE '{}' AS c".format(conflicted))
-      con.list("ATTACH DATABASE '{}' AS c".format(conflicted))
-      self.list("ATTACH DATABASE '{}' AS m".format(master))
+      con, master, reassign = get_db(conflicted), self.list("PRAGMA database_list").fetchall()[0][2], {}
+      con.modify("ATTACH DATABASE '{}' AS m".format(master))
+      self.modify("ATTACH DATABASE '{}' AS c".format(conflicted))
+      con.modify("ATTACH DATABASE '{}' AS c".format(conflicted))
+      self.modify("ATTACH DATABASE '{}' AS m".format(master))
       
       # Drop any backup tables from failed merges
-      for table in tables: self.list("DROP TABLE IF EXISTS Backup_{0}".format(table))
+      for table in tables: self.modify("DROP TABLE IF EXISTS Backup_{0}".format(table))
       
       # Gather user data to add to CHANGELOG table
       import socket, datetime
@@ -394,21 +360,12 @@ class get_db:
       date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
       modified_tables = []
       
-      # Print instructions for user
-      pprint(np.asarray([['[column name]','Display full record entry for that column without taking action'], \
-                         ['k','Keeps both records and assigns second one new id if necessary'], \
-                         ['r','Replaces all columns of first record with second record values'], \
-                         ['r [column name] [column name]...','Replaces specified columns of first record with second record values'], \
-                         ['c','Complete empty columns of first record with second record values where possible'], \
-                         ['[Enter]','Keep first record and delete second'],\
-                         ['abort','Abort merge of current table, undo all changes, and proceed to next table']]), \
-                         names=['Command','Result'])
-      
       # Merge table by table, starting with SOURCES
-      tables = tables or ['sources']+[t for t in zip(*self.list("SELECT * FROM sqlite_master WHERE name NOT LIKE '%Backup%' AND type='table'{}".format(" AND name IN ({})".format("'"+"','".join(tables)+"'") if tables else '')).fetchall())[1] if t!='sources']
+      tables = tables or ['sources']+[t for t in zip(*self.list("SELECT * FROM sqlite_master WHERE name NOT LIKE '%Backup%' AND name!='sqlite_sequence' AND type='table'{}".format(" AND name IN ({})".format("'"+"','".join(tables)+"'") if tables else '')))[1] if t!='sources']
       for table in tables:
         # Get column names and data types from master table and column names from conflicted table
-        (columns, types), conflicted_cols = zip(*self.list("PRAGMA table_info({})".format(table)).fetchall())[1:3], zip(*con.list("PRAGMA table_info({})".format(table)).fetchall())[1]
+        columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
+        conflicted_cols = con.query("PRAGMA table_info({})".format(table), unpack=True)[1]
                 
         if any([i not in columns for i in conflicted_cols]):
           # Abort table merge if conflicted has new columns not present in master. New columns must be added to the master database first via db.edit_columns().
@@ -424,11 +381,15 @@ class get_db:
             con.modify("DROP TABLE Conflicted_{0}".format(table))
         
           # Pull unique records from conflicted table
-          data = map(list, con.list("SELECT * FROM (SELECT 1 AS db, {0} FROM m.{2} UNION ALL SELECT 2 AS db, {0} FROM c.{2}) GROUP BY {1} HAVING COUNT(*)=1 AND db=2".format(','.join(columns),','.join(columns[1:]),table)).fetchall())
-
+          data = map(list, con.list("SELECT * FROM (SELECT 1 AS db, {0} FROM m.{2} UNION ALL SELECT 2 AS db, {0} FROM c.{2}) GROUP BY {1} HAVING COUNT(*)=1 AND db=2".format(','.join(columns), ','.join(columns[1:]), table)).fetchall())
+          
           if data:
+            
+            # Just print the table differences
             if diff_only:
-              pprint(np.asarray([[repr(i) for i in d] for d in data]), names=columns)
+              pprint(zip(*data)[1:], names=columns, title='New {} records'.format(table.upper()))
+            
+            # Add new records to the master and then clean up tables
             else:
               # Make temporary table copy so changes can be undone at any time
               self.modify("DROP TABLE IF EXISTS Backup_{0}".format(table))
@@ -438,7 +399,7 @@ class get_db:
 
               # Create a dictionary of any reassigned ids from merged SOURCES tables and replace applicable source_ids in other tables.
               print "\nMerging {} tables.\n".format(table.upper())
-              try: count = self.list("SELECT MAX(id) FROM {}".format(table)).fetchone()[0]+1
+              try: count = self.query("SELECT MAX(id) FROM {}".format(table), fetch='one')[0]+1
               except TypeError: count = 1
               for n,i in enumerate([d[1:] for d in data]):
                 if table=='sources': reassign[i[0]] = count
@@ -448,10 +409,11 @@ class get_db:
                 data[n] = i
                 count += 1
             
-              # Insert unique conflicted records into master and run BDdb.clean_up()
-              self.modify("INSERT INTO {} VALUES({})".format(table, ','.join(['?' for c in columns])), data)
-              print "{} records added to {} table at '{}':".format(len(data), table, master)
-              pprint(np.asarray([[repr(i) for i in d] for d in data]), names=columns)
+              # Insert unique records into master
+              for d in data: self.modify("INSERT INTO {} VALUES({})".format(table, ','.join(['?' for c in columns])), d)
+              pprint(zip(*data), names=columns, title="{} records added to {} table at '{}':".format(len(data), table, master))
+              
+              # Run clean_up on the table to check for conflicts
               abort = self.clean_up(table)
           
               # Undo all changes to table if merge is aborted. Otherwise, push table changes to master.
@@ -462,16 +424,16 @@ class get_db:
                 self.modify("DROP TABLE Backup_{0}".format(table))
                 modified_tables.append(table.upper())
           
-          else: print "{} tables identical.".format(table.upper())
+          else: print "\n{} tables identical.".format(table.upper())
       
       # Add data to CHANGELOG table
       if not diff_only:
-        user_description = raw_input('\nPlease describe the changes made in this merge : ')
+        user_description = raw_input('\nPlease describe the changes made in this merge: ')
         self.modify("INSERT INTO changelog VALUES(?, ?, ?, ?, ?, ?, ?)", (None, date, user, machine_name, ', '.join(modified_tables), user_description, os.path.basename(conflicted)))
       
       # Finish up and detach
       print "\nMerge complete!" if not diff_only else "\nDiff complete. No changes made to either database."
-      con.modify("DETACH DATABASE c"), self.modify("DETACH DATABASE c"), con.modify("DETACH DATABASE m"), self.modify("DETACH DATABASE m"), con.modify.close()
+      con.modify("DETACH DATABASE c"), self.modify("DETACH DATABASE c"), con.modify("DETACH DATABASE m"), self.modify("DETACH DATABASE m")
     else: print "File '{}' not found!".format(conflicted)
 
   def modify(self, SQL, params=''):
@@ -499,7 +461,7 @@ class get_db:
     except IOError:
       print "Could not execute: "+SQL
     
-  def output_spectrum(self, spectrum_id, filepath):
+  def output_spectrum(self, spectrum_id, filepath, original=False):
     """
     Prints a file of the spectrum with id **spectrum_id** to an ascii file with specified **filepath**.
     
@@ -509,8 +471,12 @@ class get_db:
       The id from the SPECTRA table of the spectrum to print to file.
     filepath: str
       The path of the file to print the data to.
+    original: bool
+      Return the file in the original uploaded form
     
     """
+    # Add option to just copy original file
+    
     data = self.query("SELECT * FROM spectra WHERE id={}".format(spectrum_id), fetch='one', fmt='dict')
     if data:
       fn = '{}{}.txt'.format(filepath, data['filename'] or spectrum_id)
@@ -606,6 +572,9 @@ class get_db:
       # Restricy queries to SELECT and PRAGMA statements
       if SQL.lower().startswith('select') or SQL.lower().startswith('pragma'):
 
+        # Make the query explicit so that column and table names are preserved
+        SQL, columns = self._explicit_query(SQL)
+        
         # Get the data as a dictionary
         dictionary = self.dict(SQL, params).fetchall()
         
@@ -617,10 +586,8 @@ class get_db:
           # Make an Astropy table
           table = at.Table(dictionary)
                 
-          # Pull out the field and table names
-          tables, columns = self._get_field_names(SQL)          
+          # Reorder the columns
           table = table[columns]
-          table = at.Table(np.asarray(table), names=['{}.{}'.format(t,c) if len(set(tables))>1 else c for t,c in zip(tables,columns)])
           
           # Make an array
           array = np.asarray(table)
@@ -651,6 +618,59 @@ class get_db:
     
     except:
       print 'Could not execute: '+SQL
+
+  def search(self, criterion, table, fetch=False):
+    """
+    General search method for tables. For (ra,dec) input in decimal degrees, i.e. '(12.3456,-65.4321)', returns all sources within 1 arcminute.
+    For string input, i.e. 'vb10', returns all sources with case-insensitive partial text matches in 
+    columns with 'TEXT' data type. For integer input, i.e. 123, returns all exact matches of columns with
+    INTEGER data type.
+    
+    Parameters
+    ----------
+    criterion: (str, int, tuple)
+      The text, integer, or coordinate tuple to search the table with.
+    table: str
+      The name of the table to search
+    fetch: bool
+      Return the results of the query as an Astropy table
+      
+    """
+    results = ''
+    
+    # Coordinate search
+    if isinstance(criterion,(tuple,list,np.ndarray)) and table=='sources':
+      try:
+        q = "SELECT * FROM sources WHERE ra BETWEEN "+str(criterion[0]-0.01667)+" AND "+str(criterion[0]+0.01667)+" AND dec BETWEEN "+str(criterion[1]-0.01667)+" AND "+str(criterion[1]+0.01667)
+        results = self.query(q, fmt='table')
+      except IOError:
+        print "Could not search SOURCES table by coordinates {}. Try again.".format(criterion)
+    
+    # Text string search of all columns with 'TEXT' data type
+    elif isinstance(criterion, (str,unicode)):
+      try: 
+        columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
+        q = "SELECT * FROM {} WHERE {}".format(table,' OR '.join([r"REPLACE("+c+r",' ','') like '%"+criterion.replace(' ','')+r"%'" for c,t in zip(columns,types) if t=='TEXT']))
+        results = self.query(q, fmt='table')
+      except IOError:
+        print "Could not search {} table by string {}. Try again.".format(table.upper(),criterion)
+    
+    # Integer id search
+    elif isinstance(criterion, int):
+      try:
+        q = "SELECT * FROM {} WHERE id={}".format(table,str(criterion))
+        results = self.query(q, fmt='table')
+      except IOError:
+        print "Could not search {} table by id {}. Try again.".format(table.upper(),criterion)        
+    
+    # Problem!
+    else: print "Could not search {} table by {}. Try again.".format(table.upper(),criterion)
+    
+    # Return inventory if there is only one result, otherwise print all the results
+    if results: 
+      pprint(results, title=table.upper())
+      if fetch: return results
+    else: print "No results found for {} in {} the table.".format(criterion,table.upper())
 
   def table(self, table, columns, types, constraints='', new_table=False):
     """
@@ -684,18 +704,26 @@ class get_db:
     else:
       constraints = ['UNIQUE NOT NULL']+(['']*len(columns)-1)
     if not len(columns)==len(types)==len(constraints):
-      print "Must provide equal length *table, *columns, and *constraints sequences.";  goodtogo = False
+      print "Must provide equal length *columns ({}), *types ({}), and *constraints ({}) sequences."\
+            .format(len(columns),len(types),len(constraints));  goodtogo = False
     
     if goodtogo:
+      tables = self.query("SELECT name FROM sqlite_master", unpack=True)[0]
+      
       # If the table exists, modify the columns
-      if table in zip(*self.list("SELECT name FROM sqlite_master").fetchall())[0] and not new_table:
+      if table in tables and not new_table:
+        
+        # Rename the old table and create a new one
         self.list("ALTER TABLE {0} RENAME TO TempOldTable".format(table))
         self.list("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {} {}'.format(c,t,r) for c,t,r in zip(columns,types,constraints)])))
-        self.list("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable".format(table, ','.join([c for c in list(zip(*self.list("PRAGMA table_info(TempOldTable)").fetchall())[1]) if c in columns])))
+        
+        # Populate the new table and drop the old one
+        old_columns = [c for c in self.query("PRAGMA table_info(TempOldTable)", unpack=True)[1] if c in columns]
+        self.list("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable".format(table, ','.join(old_columns)))
         self.list("DROP TABLE TempOldTable")
     
       # If the table does not exist and new_table is True, create it
-      elif table not in zip(*self.list("SELECT name FROM sqlite_master").fetchall())[0] and new_table:
+      elif table not in tables and new_table:
         self.list("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {} {}'.format(c,t,r) for c,t,r in zip(columns,types,constraints)])))
     
       # Otherwise the table to be modified doesn't exist or the new table to add already exists, so do nothing
@@ -703,51 +731,69 @@ class get_db:
         if new_table: print 'Table {} already exists. Set *new_table=False to modify.'.format(table.upper())
         else: print 'Table {} does not exist. Could not modify. Set *new_table=True to add a new table.'.format(table.upper())
         
-    else: print 'The {} table has not been {}. Please make sure your table columns, types, and constraints are formatted properly.'.format(table.upper(),'created' if new_table else 'modified')
+    else: print 'The {} table has not been {}. Please make sure your table columns, \
+                types, and constraints are formatted properly.'.format(table.upper(),\
+                'created' if new_table else 'modified')
 
-  def _get_field_names(self, SQL):
+  def _explicit_query(self, SQL):
+    """
+    Sorts the column names so they are returned in the same order they are queried. Also turns 
+    ambiguous SELECT statements into explicit SQLite language in case column names are not unique.
+    
+    Parameters
+    ----------
+    SQL: str
+      The SQLite query to parse
+    
+    Returns
+    -------
+    SQL: str
+      The new SQLite string to use in the query
+    
+    """
     # If field names are given, sort so that they come out in the same order they are fetched
     if 'select' in SQL.lower() and 'from' in SQL.lower():
                       
       # Make a dictionary of the table aliases
-      if 'join' in SQL.lower():
-        tdict = {}
-        from_clause = SQL.lower().split('from ')[-1].split(' where')[0]
-        tables = [j for k in [i.split(' on ') for i in from_clause.split(' join ')] for j in k if '=' not in j]
-        for t in tables:
-          t = t.replace('as','')
+      tdict = {}
+      from_clause = SQL.lower().split('from ')[-1].split(' where')[0]
+      tables = [j for k in [i.split(' on ') for i in from_clause.split(' join ')] for j in k if '=' not in j]
+      
+      for t in tables:
+        t = t.replace('as','')
+        try:
           name, alias = t.split()
           tdict[alias] = name
-      
-        # Replace all aliases with the table name
-        for k,v in tdict.items(): SQL = SQL.replace(k+'.',v+'.')
+        except:
+          tdict[t] = t
       
       # Get all the column names
-      columns = SQL.replace(' ','').lower().split('select')[1].split('from')[0].split(',')
-      tables = []
-
+      columns = SQL.replace(' ','').lower().split('distinct' if 'distinct' in SQL.lower() else 'select')[1].split('from')[0].split(',')
+  
       # Replace * with the field names
       for n,col in enumerate(columns):
         if '.' in col:
           t, col = col.split('.')
         else:
-          t = SQL.lower().split('from ')[-1].split(' where')[0]
-
+          t = tables[0]
+  
         if '*' in col: 
-          columns[n] = np.array(self.list("PRAGMA table_info({})".format(t)).fetchall()).T[1]
-          tables += [t]*len(columns[n])
+          col = np.array(self.list("PRAGMA table_info({})".format(tdict.get(t))).fetchall()).T[1]
         else: 
-          columns[n] = [columns[n].split('.')[-1]]
-          tables += [t]
-
+          col = [col]
+          
+        columns[n] = ["{}.{}".format(t,c) if len(tables)>1 else c for c in col]
+  
       # Flatten the list of columns
       columns = [j for k in columns for j in k]
-
-    if 'pragma' in SQL.lower():
-      t = SQL.split('(')[-1].split(')')[0]
-      columns, tables = ['cid','name','type','notnull','dflt_value','pk'], [t]*6
-
-    return tables, columns
+  
+      # Reconstruct SQL query
+      SQL = "SELECT {}".format('DISTINCT ' if 'distinct' in SQL.lower() else '')+','.join(["{0} AS '{0}'".format(col) for col in columns])+' FROM '+SQL.lower().split('from')[-1]
+  
+    elif 'pragma' in SQL.lower():
+      columns = ['cid','name','type','notnull','dflt_value','pk']
+    
+    return SQL, columns
 
 # ==============================================================================================================================================
 # ================================= Adapters and converters for special data types =============================================================
@@ -816,6 +862,11 @@ def convert_spectrum(File):
   
   if isinstance(File,str):
     
+    # Convert variable path to absolute path
+    if File.startswith('$'):
+      abspath = os.popen('echo {}'.format(File.split('/')[0])).read()[:-1]
+      if abspath: File = File.replace(File.split('/')[0],abspath)
+    
     # For FITS files
     if File.endswith('.fits'):
       try: spectrum, header = pf.getdata(File, cache=True, header=True)
@@ -881,6 +932,16 @@ def clean_header(header):
     for x,y,z in header.cards: new_header[x.replace('.','_').replace('#','')] = (y,z)
     header = pf.PrimaryHDU(header=new_header).header
   except: pass
+
+def _help():
+  pprint(np.asarray([['[column name]','Display full record entry for that column without taking action'], \
+                   ['k','Keeps both records and assigns second one new id if necessary'], \
+                   ['r','Replaces all columns of first record with second record values'], \
+                   ['r [column name] [column name]...','Replaces specified columns of first record with second record values'], \
+                   ['c','Complete empty columns of first record with second record values where possible'], \
+                   ['[Enter]','Keep first record and delete second'],\
+                   ['abort','Abort merge of current table, undo all changes, and proceed to next table']]), \
+                   names=['Command','Result'])
 
 def _autofill_spec_record(record):
   """

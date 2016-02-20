@@ -31,7 +31,7 @@ Alternatively, you can `download and use the BDNYC Database`_, which contains th
 .. note:: For access to the full dataset, an email request must be made to a BDNYC group admin.
 
 Accessing the Database
-====================
+======================
 
 To start using the database, launch iPython, import the module, then initialize the database with the :class:`astrodb.get_db()` class like so::
 
@@ -56,11 +56,11 @@ will return a table of the band, magnitude and uncertainty for all records in th
 
 You can search any table in the database with the :py:meth:`~astrodb.get_db.identify` method by supplying a string, integer, or (ra,dec) coordinates along with the table to search. For example, if I want to find all the records in the SOURCES table in the HR 8799 system::
 
-    db.identify('8799','sources')
+    db.search('8799', 'sources')
     
 Or all the papers published by Joe Filippazzo::
 
-    db.identify('Fili','publications')
+    db.search('Fili', 'publications')
 
 You can also pass SQL queries wrapped in double-quotes (") to the :py:meth:`~astrodb.get_db.query` method::
 

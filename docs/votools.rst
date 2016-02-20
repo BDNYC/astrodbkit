@@ -1,7 +1,7 @@
 votools module
 ================
 
-.. automodule:: astrodbkit.votools
+.. automodule:: votools
    :members:
    :undoc-members:
    :show-inheritance:
