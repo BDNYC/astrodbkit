@@ -286,9 +286,11 @@ class get_db:
     
     """
     data_tables = {}
-    try:
-      for table in ['sources']+[t for t in self.query("SELECT * FROM sqlite_master WHERE type='table'", unpack=True)[1] if t not in ['sources','sqlite_sequence']]:
+
+    for table in ['sources']+[t for t in zip(*self.list("SELECT * FROM sqlite_master WHERE type='table'"))[1] if t not in ['sources','sqlite_sequence']]:
         
+      try:
+          
         # Get the columns, pull out redundant ones, and query the table for this source's data
         columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
         
@@ -301,20 +303,28 @@ class get_db:
           try: 
             id = 'id' if table.lower()=='sources' else 'source_id'
             data = self.query("SELECT {} FROM {} WHERE {}={}".format(','.join(columns),table,id,source_id), fmt='table')
-          except: data = None
+            
+            if not data and table.lower()=='sources':
+              print 'No source with id {}. Try db.search() to search the database for a source_id.'.format(source_id)
+            
+          except: 
+            data = None
         
           # If there's data for this table, save it
           if data: 
             data_tables[table] = data
             data = data[list(columns)]
-            if not fetch: pprint(data, title=table.upper())
+            if not fetch: pprint(data, title=table.upper())          
         
+          # Plot all the spectra
+          if plot and table.lower()=='spectra' and data:
+            for i in self.query("SELECT id FROM spectra WHERE source_id={}".format(source_id), unpack=True)[0]: 
+              self.plot_spectrum(i)
+              
         else: pass
-        
-      if plot:
-        for i in self.query("SELECT id FROM spectra WHERE source_id={}".format(source_id), unpack=True)[0]: self.plot_spectrum(i)
     
-    except: print 'No source with id {}. Try db.identify() to search the database for a source_id.'.format(source_id)
+      except:
+        print 'Could not retrieve data from {} table.'.format(table.upper())
     
     if fetch: return data_tables
 
