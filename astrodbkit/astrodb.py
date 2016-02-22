@@ -852,7 +852,27 @@ def convert_spectrum(File):
     
     # For FITS files
     if File.endswith('.fits'):
-      try: spectrum, header = pf.getdata(File, cache=True, header=True)
+      try: 
+        # Get the data 
+        spectrum, header = pf.getdata(File, cache=True, header=True)
+      
+        # Check the key type
+        KEY_TYPE = ['CTYPE1']
+        setType  = set(KEY_TYPE).intersection(set(header.keys()))
+        if len(setType) == 0: isLinear = True
+        else:
+            valType = header[setType.pop()]
+            isLinear = valType.strip().upper()=='LINEAR'
+        
+        # Get wl, flux & error data from fits file
+        spectrum = __get_spec(spectrum, header, File)
+    
+        # Generate wl axis when needed
+        if not spectrum[0]: spectrum[0] = __create_waxis(header, len(spectrum[1]), File)
+        
+        # If no wl axis generated, then clear out all retrieved data for object
+        if not spectrum[0]: spectrum = None
+      
       except: pass
     
     # For .txt files
@@ -872,6 +892,143 @@ def convert_spectrum(File):
   else: 
     spectrum = Spectrum(spectrum, header, File)
     return spectrum
+
+def __create_waxis(fitsHeader, lenData, fileName, wlog=False):
+    # Define key names in
+    KEY_MIN  = ['COEFF0','CRVAL1']         # Min wl
+    KEY_DELT = ['COEFF1','CDELT1','CD1_1'] # Delta of wl
+    KEY_OFF  = ['LTV1']                    # Offset in wl to subsection start
+    
+    # Find key names for minimum wl, delta, and wl offset in fits header
+    setMin  = set(KEY_MIN).intersection(set(fitsHeader.keys()))
+    setDelt = set(KEY_DELT).intersection(set(fitsHeader.keys()))
+    setOff  = set(KEY_OFF).intersection(set(fitsHeader.keys()))
+    
+    # Get the values for minimum wl, delta, and wl offset, and generate axis
+    if len(setMin) >= 1 and len (setDelt) >= 1:
+        nameMin = setMin.pop()
+        valMin  = fitsHeader[nameMin]
+        
+        nameDelt = setDelt.pop()
+        valDelt  = fitsHeader[nameDelt]
+        
+        if len(setOff) == 0:
+            valOff = 0
+        else:
+            nameOff = setOff.pop()
+            valOff  = fitsHeader[nameOff]
+        
+        # generate wl axis
+        if nameMin == 'COEFF0' or wlog==True:
+            # SDSS fits files
+            wAxis = 10 ** (np.arange(lenData) * valDelt + valMin)
+        else:
+            wAxis = (np.arange(lenData) * valDelt) + valMin - (valOff * valDelt)
+        
+    else:
+        wAxis = None
+        if verb:
+            print 'Could not re-create wavelength axis for ' + fileName + '.'
+    
+    return wAxis
+
+def __get_spec(fitsData, fitsHeader, fileName):
+    validData = [None] * 3
+    
+    # Identify number of data sets in fits file
+    dimNum = len(fitsData)
+    
+    # Identify data sets in fits file
+    fluxIdx  = None
+    waveIdx  = None
+    sigmaIdx = None
+    
+    if dimNum == 1:
+        fluxIdx = 0
+    elif dimNum == 2:
+        if len(fitsData[0]) == 1:
+            sampleData = fitsData[0][0][20]
+        else:
+            sampleData = fitsData[0][20]
+        if sampleData < 0.0001:
+            # 0-flux, 1-unknown
+            fluxIdx  = 0
+        else:
+            waveIdx = 0
+            fluxIdx = 1
+    elif dimNum == 3:
+        waveIdx  = 0
+        fluxIdx  = 1
+        sigmaIdx = 2
+    elif dimNum == 4:
+    # 0-flux clean, 1-flux raw, 2-background, 3-sigma clean
+        fluxIdx  = 0
+        sigmaIdx = 3
+    elif dimNum == 5:
+    # 0-flux, 1-continuum substracted flux, 2-sigma, 3-mask array, 4-unknown
+        fluxIdx  = 0
+        sigmaIdx = 2
+    elif dimNum > 10:
+    # Implies that only one data set in fits file: flux
+        fluxIdx = -1
+        if np.isscalar(fitsData[0]):
+            fluxIdx = -1
+        elif len(fitsData[0]) == 2:
+        # Data comes in a xxxx by 2 matrix (ascii origin)
+            tmpWave = []
+            tmpFlux = []
+            for pair in fitsData:
+                tmpWave.append(pair[0])
+                tmpFlux.append(pair[1])
+            fitsData = [tmpWave,tmpFlux]
+            fitsData = np.array(fitsData)
+            
+            waveIdx = 0
+            fluxIdx = 1
+        else:
+        # Indicates that data is structured in an unrecognized way
+            fluxIdx = None
+    else:
+        fluxIdx = None
+        
+    # Fetch wave data set from fits file
+    if fluxIdx is None:
+    # No interpretation known for fits file data sets
+        validData = None
+        if verb:
+            print 'Unable to interpret data in ' + fileName + '.'
+        return validData
+    else:
+        if waveIdx is not None:
+            if len(fitsData[waveIdx]) == 1:
+            # Data set may be a 1-item list
+                validData[0] = fitsData[waveIdx][0]
+            else:
+                validData[0] = fitsData[waveIdx]
+    
+    # Fetch flux data set from fits file
+    if fluxIdx == -1:
+        validData[1] = fitsData
+    else:
+        if len(fitsData[fluxIdx]) == 1:
+            validData[1] = fitsData[fluxIdx][0]
+        else:
+            validData[1] = fitsData[fluxIdx]
+    
+    # Fetch sigma data set from fits file, if requested
+    if sigmaIdx is None:
+        validData[2] = np.array([np.nan] * len(validData[1]))
+    else:
+        if len(fitsData[sigmaIdx]) == 1:
+            validData[2] = fitsData[sigmaIdx][0]
+        else:
+            validData[2] = fitsData[sigmaIdx]
+    
+    # If all sigma values have the same value, replace them with nans
+    if validData[2][10] == validData[2][11] == validData[2][12]:
+        validData[2] = np.array([np.nan] * len(validData[1]))
+    
+    return validData
 
 # Register the adapters
 sqlite3.register_adapter(np.ndarray, adapt_array)
