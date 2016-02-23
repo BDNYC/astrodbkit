@@ -882,7 +882,7 @@ class Database:
   
     elif 'pragma' in SQL.lower():
       columns = ['cid','name','type','notnull','dflt_value','pk']
-    
+
     return SQL, columns
 
 # ==============================================================================================================================================
