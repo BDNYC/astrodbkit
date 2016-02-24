@@ -603,12 +603,13 @@ class get_db:
     except:
       print 'Could not execute: '+SQL
 
-  def search(self, criterion, table, fetch=False):
+  def search(self, criterion, table, columns=[], fetch=False):
     """
-    General search method for tables. For (ra,dec) input in decimal degrees, i.e. '(12.3456,-65.4321)', returns all sources within 1 arcminute.
-    For string input, i.e. 'vb10', returns all sources with case-insensitive partial text matches in 
-    columns with 'TEXT' data type. For integer input, i.e. 123, returns all exact matches of columns with
-    INTEGER data type.
+    General search method for tables. For (ra,dec) input in decimal degrees, 
+    i.e. '(12.3456,-65.4321)', returns all sources within 1 arcminute.
+    For string input, i.e. 'vb10', returns all sources with case-insensitive partial text 
+    matches in columns with 'TEXT' data type. For integer input, i.e. 123, returns all 
+    exact matches of columns with INTEGER data type.
     
     Parameters
     ----------
@@ -616,27 +617,44 @@ class get_db:
       The text, integer, or coordinate tuple to search the table with.
     table: str
       The name of the table to search
+    columns: sequence
+      Specific column names to search, otherwise searches all columns
     fetch: bool
       Return the results of the query as an Astropy table
       
     """
     results = ''
     
+    # Get list of columns to search and format properly
+    all_columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
+    columns = columns or all_columns
+    columns = np.asarray([columns] if isinstance(columns,str) else columns)
+    
+    # Separate good and bad columns and corresponding types
+    badcols = columns[~np.in1d(columns,all_columns)]
+    columns = columns[np.in1d(columns,all_columns)]
+    columns = np.array([c for c in all_columns if c in columns])
+    types = np.array([t for c,t in zip(all_columns,types) if c in columns])[np.in1d(columns,all_columns)]
+    for col in badcols: print "'{}' is not a column in the {} table.".format(col,table.upper())
+            
     # Coordinate search
     if isinstance(criterion,(tuple,list,np.ndarray)) and table=='sources':
       try:
-        q = "SELECT * FROM sources WHERE ra BETWEEN "+str(criterion[0]-0.01667)+" AND "+str(criterion[0]+0.01667)+" AND dec BETWEEN "+str(criterion[1]-0.01667)+" AND "+str(criterion[1]+0.01667)
+        q = "SELECT * FROM sources WHERE ra BETWEEN "\
+          +str(criterion[0]-0.01667)+" AND "\
+          +str(criterion[0]+0.01667)+" AND dec BETWEEN "\
+          +str(criterion[1]-0.01667)+" AND "+str(criterion[1]+0.01667)
         results = self.query(q, fmt='table')
-      except IOError:
+      except:
         print "Could not search SOURCES table by coordinates {}. Try again.".format(criterion)
     
     # Text string search of all columns with 'TEXT' data type
-    elif isinstance(criterion, (str,unicode)):
-      try: 
-        columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
-        q = "SELECT * FROM {} WHERE {}".format(table,' OR '.join([r"REPLACE("+c+r",' ','') like '%"+criterion.replace(' ','')+r"%'" for c,t in zip(columns,types) if t=='TEXT']))
+    elif isinstance(criterion, (str,unicode)) and any(columns) and 'TEXT' in types:
+      try:
+        q = "SELECT * FROM {} WHERE {}".format(table,' OR '.join([r"REPLACE("+c+r",' ','') like '%"\
+          +criterion.replace(' ','')+r"%'" for c,t in zip(columns,types[np.in1d(columns,all_columns)]) if t=='TEXT']))
         results = self.query(q, fmt='table')
-      except IOError:
+      except:
         print "Could not search {} table by string {}. Try again.".format(table.upper(),criterion)
     
     # Integer id search
@@ -644,16 +662,16 @@ class get_db:
       try:
         q = "SELECT * FROM {} WHERE id={}".format(table,str(criterion))
         results = self.query(q, fmt='table')
-      except IOError:
+      except:
         print "Could not search {} table by id {}. Try again.".format(table.upper(),criterion)        
     
     # Problem!
-    else: print "Could not search {} table by {}. Try again.".format(table.upper(),criterion)
+    else: print "Could not search {} table by '{}'. Try again.".format(table.upper(),criterion)
     
-    # Return inventory if there is only one result, otherwise print all the results
+    # Print or return the results
     if results: 
-      pprint(results, title=table.upper())
       if fetch: return results
+      else: pprint(results, title=table.upper())
     else: print "No results found for {} in {} the table.".format(criterion,table.upper())
 
   def table(self, table, columns, types, constraints='', new_table=False):
