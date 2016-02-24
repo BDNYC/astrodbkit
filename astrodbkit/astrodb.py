@@ -603,7 +603,7 @@ class get_db:
     except:
       print 'Could not execute: '+SQL
 
-  def search(self, criterion, table, columns=[], fetch=False):
+  def search(self, criterion, table, columns='', fetch=False):
     """
     General search method for tables. For (ra,dec) input in decimal degrees, 
     i.e. '(12.3456,-65.4321)', returns all sources within 1 arcminute.
@@ -648,7 +648,7 @@ class get_db:
       except:
         print "Could not search SOURCES table by coordinates {}. Try again.".format(criterion)
     
-    # Text string search of all columns with 'TEXT' data type
+    # Text string search of columns with 'TEXT' data type
     elif isinstance(criterion, (str,unicode)) and any(columns) and 'TEXT' in types:
       try:
         q = "SELECT * FROM {} WHERE {}".format(table,' OR '.join([r"REPLACE("+c+r",' ','') like '%"\
@@ -657,10 +657,11 @@ class get_db:
       except:
         print "Could not search {} table by string {}. Try again.".format(table.upper(),criterion)
     
-    # Integer id search
+    # Integer search of columns with 'INTEGER' data type
     elif isinstance(criterion, int):
       try:
-        q = "SELECT * FROM {} WHERE id={}".format(table,str(criterion))
+        q = "SELECT * FROM {} WHERE {}".format(table,' OR '.join(['{}={}'.format(c,criterion) \
+            for c,t in zip(columns,types[np.in1d(columns,all_columns)]) if t=='INTEGER']))
         results = self.query(q, fmt='table')
       except:
         print "Could not search {} table by id {}. Try again.".format(table.upper(),criterion)        
