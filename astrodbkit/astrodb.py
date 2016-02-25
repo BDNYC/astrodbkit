@@ -164,11 +164,11 @@ class get_db:
     
     # Remove records with missing required values
     req_keys = columns[np.where(required)]
-    self.modify("DELETE FROM {} WHERE {}".format(table, ' OR '.join([i+' IS NULL' for i in req_keys])))
-    self.modify("DELETE FROM {} WHERE {}".format(table, ' OR '.join([i+" IN ('null','None','')" for i in req_keys])))
+    self.modify("DELETE FROM {} WHERE {}".format(table, ' OR '.join([i+' IS NULL' for i in req_keys])), verbose=False)
+    self.modify("DELETE FROM {} WHERE {}".format(table, ' OR '.join([i+" IN ('null','None','')" for i in req_keys])), verbose=False)
     
     # Remove exact duplicates
-    self.modify("DELETE FROM {0} WHERE id NOT IN (SELECT min(id) FROM {0} GROUP BY {1})".format(table,', '.join(columns[1:])))
+    self.modify("DELETE FROM {0} WHERE id NOT IN (SELECT min(id) FROM {0} GROUP BY {1})".format(table,', '.join(columns[1:])), verbose=False)
 
     # Check for records with identical required values but different ids.            
     req_keys = columns[np.where(np.logical_and(required,columns!='id'))]
@@ -233,22 +233,22 @@ class get_db:
       if replace=='r':
         sure = raw_input('Are you sure you want to replace record {} with record {}? [y/n] : '.format(*duplicate))
         if sure.lower()=='y':
-          self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[1]))
-          self.modify("UPDATE {} SET id={} WHERE id={}".format(table, duplicate[0], duplicate[1]))
+          self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[1]), verbose=False)
+          self.modify("UPDATE {} SET id={} WHERE id={}".format(table, duplicate[0], duplicate[1]), verbose=False)
       
       # Replace specific records
       elif replace.startswith('r') and all([i in list(columns)+options for i in replace.split()]):
         empty_cols, new_vals = zip(*[['{}=?'.format(e),n] for e,n in zip(columns,new) if e in replace])
         if empty_cols:
-          if delete: self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[1]))
-          self.modify("UPDATE {} SET {} WHERE id={}".format(table, ','.join(empty_cols), duplicate[0]), tuple(new_vals))
+          if delete: self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[1]), verbose=False)
+          self.modify("UPDATE {} SET {} WHERE id={}".format(table, ','.join(empty_cols), duplicate[0]), tuple(new_vals), verbose=False)
       
       # Complete the old record with any missing data provided in the new record, then delete the new record
       elif replace=='c':
         try:
           empty_cols, new_vals = zip(*[['{}=?'.format(e),n] for e,o,n in zip(columns,old,new) if repr(o).lower() in ['','none','null'] and repr(n).lower() not in ['','none','null']])
-          self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[1]))
-          self.modify("UPDATE {} SET {} WHERE id={}".format(table, ','.join(empty_cols), duplicate[0]), tuple(new_vals))
+          self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[1]), verbose=False)
+          self.modify("UPDATE {} SET {} WHERE id={}".format(table, ','.join(empty_cols), duplicate[0]), tuple(new_vals), verbose=False)
         except:
           pass
       
@@ -257,7 +257,7 @@ class get_db:
       
       # Execute raw SQL
       elif replace.startswith('sql ') and 'sql' in options: 
-        try: self.modify(replace[4:])
+        try: self.modify(replace[4:], verbose=False)
         except: print 'Invalid SQLite statement: {}'.format(replace[4:])
     
     # Abort the current database clean up
@@ -265,9 +265,9 @@ class get_db:
     
     # Delete the current record if *delete=True
     elif not replace:
-      self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[1]))
+      self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[1]), verbose=False)
           
-  def inventory(self, source_id, plot=False, fetch=False):
+  def inventory(self, source_id, plot=False, fetch=False, fmt='table'):
     """
     Prints a summary of all objects in the database. Input string or list of strings in **ID** or **unum** for specific objects.
     
@@ -313,9 +313,12 @@ class get_db:
         
           # If there's data for this table, save it
           if data: 
-            data_tables[table] = data
-            data = data[list(columns)]
-            if not fetch: pprint(data, title=table.upper())          
+            if fetch: 
+              data_tables[table] = self.query("SELECT {} FROM {} WHERE {}={}".format(','.join(columns),table,id,source_id), \
+                                              fetch=True, fmt=fmt)
+            else:
+              data = data[list(columns)]
+              pprint(data, title=table.upper())          
         
           # Plot all the spectra
           if plot and table.lower()=='spectra' and data:
@@ -324,7 +327,7 @@ class get_db:
               
         else: pass
     
-      except IOError:
+      except:
         print 'Could not retrieve data from {} table.'.format(table.upper())
     
     if fetch: return data_tables
@@ -437,7 +440,7 @@ class get_db:
       con.modify("DETACH DATABASE c"), self.modify("DETACH DATABASE c"), con.modify("DETACH DATABASE m"), self.modify("DETACH DATABASE m")
     else: print "File '{}' not found!".format(conflicted)
 
-  def modify(self, SQL, params=''):
+  def modify(self, SQL, params='', verbose=True):
     """
     Wrapper for CRUD operations to make them distinct from queries and automatically pass commit() method to cursor.
     
@@ -447,6 +450,8 @@ class get_db:
       The SQL query to execute
     params: sequence
       Mimicks the native parameter substitution of sqlite3
+    verbose: bool
+      Prints the number of modified records
     """
     try:
       
@@ -458,7 +463,8 @@ class get_db:
       else:
         self.list(SQL, params)
         self.conn.commit()
-        print 'Number of records modified: {}'.format(self.list("SELECT changes()").fetchone()[0] or '0')
+        if verbose:
+          print 'Number of records modified: {}'.format(self.list("SELECT changes()").fetchone()[0] or '0')
     except:
       print "Could not execute: "+SQL
     
@@ -638,15 +644,16 @@ class get_db:
     for col in badcols: print "'{}' is not a column in the {} table.".format(col,table.upper())
             
     # Coordinate search
-    if isinstance(criterion,(tuple,list,np.ndarray)) and table=='sources':
+    if isinstance(criterion,(tuple,list,np.ndarray)):
       try:
-        q = "SELECT * FROM sources WHERE ra BETWEEN "\
+        q = "SELECT * FROM {} WHERE ra BETWEEN ".format(table)\
           +str(criterion[0]-0.01667)+" AND "\
           +str(criterion[0]+0.01667)+" AND dec BETWEEN "\
-          +str(criterion[1]-0.01667)+" AND "+str(criterion[1]+0.01667)
+          +str(criterion[1]-0.01667)+" AND "\
+          +str(criterion[1]+0.01667)
         results = self.query(q, fmt='table')
       except:
-        print "Could not search SOURCES table by coordinates {}. Try again.".format(criterion)
+        print "Could not search {} table by coordinates {}. Try again.".format(table.upper(),criterion)
     
     # Text string search of columns with 'TEXT' data type
     elif isinstance(criterion, (str,unicode)) and any(columns) and 'TEXT' in types:
@@ -750,8 +757,8 @@ class get_db:
     
     Returns
     -------
-    SQL: str
-      The new SQLite string to use in the query
+    (SQL, columns): (str, sequence)
+      The new SQLite string to use in the query and the ordered column names
     
     """
     # If field names are given, sort so that they come out in the same order they are fetched
@@ -791,7 +798,10 @@ class get_db:
       columns = [j for k in columns for j in k]
   
       # Reconstruct SQL query
-      SQL = "SELECT {}".format('DISTINCT ' if 'distinct' in SQL.lower() else '')+','.join(["{0} AS '{0}'".format(col) for col in columns])+' FROM '+SQL.lower().split('from')[-1]
+      SQL = "SELECT {}".format('DISTINCT ' if 'distinct' in SQL.lower() else '')\
+          +','.join(["{0} AS '{0}'".format(col) for col in columns])\
+          +' FROM '\
+          +SQL.replace('from','FROM').split('FROM')[-1]
   
     elif 'pragma' in SQL.lower():
       columns = ['cid','name','type','notnull','dflt_value','pk']
@@ -1095,6 +1105,7 @@ def clean_header(header):
   except: pass
 
 def _help():
+  print ' '
   pprint(np.asarray([['[column name]','Display full record entry for that column without taking action'], \
                    ['k','Keeps both records and assigns second one new id if necessary'], \
                    ['r','Replaces all columns of first record with second record values'], \
