@@ -77,7 +77,9 @@ class get_db:
     delimiter: str
       The string to use as the delimiter when parsing the ascii file
     bands: sequence
-      Sequence of band to look for in the data header when digesting columns of multiple photometric measurements (e.g. ['MKO_J','MKO_H','MKO_K']) into individual rows of data for database insertion
+      Sequence of band to look for in the data header when digesting columns of 
+      multiple photometric measurements (e.g. ['MKO_J','MKO_H','MKO_K']) into individual 
+      rows of data for database insertion
     
     """
     if os.path.isfile(ascii):
@@ -104,13 +106,14 @@ class get_db:
             # Add the band data to the list of new_records
             new_records = at.vstack([new_records,band])
           except IOError: pass
-    
+            
       else:      
         # Inject data into full database table format
         new_records = at.vstack([new_records,data])[new_records.colnames]
     
       # Reject rows that fail column requirements, e.g. NOT NULL fields like 'source_id'
-      for r in columns[np.where(np.logical_and(required,columns!='id'))]: new_records = new_records[np.where(new_records[r])]
+      for r in columns[np.where(np.logical_and(required,columns!='id'))]: 
+        new_records = new_records[np.where(new_records[r])]
     
       # For spectra, try to populate the table by reading the FITS header
       if table.lower()=='spectra':
@@ -148,7 +151,8 @@ class get_db:
  
   def clean_up(self, table):
     """
-    Removes exact duplicates, blank records or data without a *source_id* from the specified **table**. Then finds possible duplicates and prompts for conflict resolution.
+    Removes exact duplicates, blank records or data without a *source_id* from the specified **table**. 
+    Then finds possible duplicates and prompts for conflict resolution.
     
     Parameters
     ----------
@@ -160,25 +164,33 @@ class get_db:
     metadata = self.query("PRAGMA table_info({})".format(table), fmt='table')
     columns, types, required = [np.array(metadata[n]) for n in ['name','type','notnull']]
     records = self.query("SELECT * FROM {}".format(table), fmt='table')
-    duplicate, ignore, command = [1], [], ''
+    ignore = self.query("SELECT * FROM ignore WHERE table_name LIKE ?", (table,))
+    duplicate, command = [1], ''
     
     # Remove records with missing required values
     req_keys = columns[np.where(required)]
-    self.modify("DELETE FROM {} WHERE {}".format(table, ' OR '.join([i+' IS NULL' for i in req_keys])), verbose=False)
-    self.modify("DELETE FROM {} WHERE {}".format(table, ' OR '.join([i+" IN ('null','None','')" for i in req_keys])), verbose=False)
+    try:
+      self.modify("DELETE FROM {} WHERE {}".format(table, ' OR '.join([i+' IS NULL' for i in req_keys])), verbose=False)
+      self.modify("DELETE FROM {} WHERE {}".format(table, ' OR '.join([i+" IN ('null','None','')" for i in req_keys])), verbose=False)
+    except: pass
     
     # Remove exact duplicates
     self.modify("DELETE FROM {0} WHERE id NOT IN (SELECT min(id) FROM {0} GROUP BY {1})".format(table,', '.join(columns[1:])), verbose=False)
 
     # Check for records with identical required values but different ids.            
-    req_keys = columns[np.where(np.logical_and(required,columns!='id'))]
+    if table.lower()!='sources': req_keys = columns[np.where(np.logical_and(required,columns!='id'))]
 
-    while any(duplicate):
+    # List of new pairs to ignore
+    new_ignore = []
+
+    while any(duplicate):      
       # Pull out duplicates one by one
-      duplicate = self.query("SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.source_id=t2.source_id WHERE t1.id!=t2.id AND {1}{2}"\
-                              .format(table, ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]), \
-                              ' AND '+'t1.id NOT IN ({0}) AND t2.id NOT IN ({0})'.format(','.join(map(str,ignore))) if ignore else ''), \
-                              fetch='one')
+      duplicate = self.query("SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.source_id=t2.source_id WHERE t1.id!=t2.id AND {1}{2}{3}"\
+                              .format(table, ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]), (' AND '\
+                              +' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))".format(','.join(map(str,[id1,id2]))) for id1,id2 \
+                              in zip(ignore['id1'],ignore['id2'])])) if ignore!='' else '', (' AND '\
+                              +' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))".format(','.join(map(str,ni))) for ni \
+                              in new_ignore])) if new_ignore else ''), fetch='one')
 
       # Compare potential duplicates and prompt user for action on each
       try:
@@ -187,7 +199,9 @@ class get_db:
         command = self._compare_records(table, duplicate, delete=True)
         
         # Add acceptible duplicates to ignore list or abort
-        if command=='keep': ignore += duplicate
+        if command=='keep': 
+          new_ignore.append([duplicate[0],duplicate[1]])
+          self.list("INSERT INTO ignore VALUES(?,?,?,?)", (None,duplicate[0],duplicate[1],table.lower()))
         elif command=='undo': pass # Add this functionality!
         elif command=='abort': break
         else: pass
@@ -349,13 +363,13 @@ class get_db:
     if os.path.isfile(conflicted):
       # Load and attach master and conflicted databases
       con, master, reassign = get_db(conflicted), self.list("PRAGMA database_list").fetchall()[0][2], {}
-      con.modify("ATTACH DATABASE '{}' AS m".format(master))
-      self.modify("ATTACH DATABASE '{}' AS c".format(conflicted))
-      con.modify("ATTACH DATABASE '{}' AS c".format(conflicted))
-      self.modify("ATTACH DATABASE '{}' AS m".format(master))
+      con.modify("ATTACH DATABASE '{}' AS m".format(master), verbose=False)
+      self.modify("ATTACH DATABASE '{}' AS c".format(conflicted), verbose=False)
+      con.modify("ATTACH DATABASE '{}' AS c".format(conflicted), verbose=False)
+      self.modify("ATTACH DATABASE '{}' AS m".format(master), verbose=False)
       
       # Drop any backup tables from failed merges
-      for table in tables: self.modify("DROP TABLE IF EXISTS Backup_{0}".format(table))
+      for table in tables: self.modify("DROP TABLE IF EXISTS Backup_{0}".format(table), verbose=False)
       
       # Gather user data to add to CHANGELOG table
       import socket, datetime
@@ -396,10 +410,10 @@ class get_db:
             # Add new records to the master and then clean up tables
             else:
               # Make temporary table copy so changes can be undone at any time
-              self.modify("DROP TABLE IF EXISTS Backup_{0}".format(table))
-              self.modify("ALTER TABLE {0} RENAME TO Backup_{0}".format(table))
-              self.modify("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {}'.format(c,t) for c,t in zip(columns,types)])))
-              self.modify("INSERT INTO {0} ({1}) SELECT {1} FROM Backup_{0}".format(table, ','.join(columns)))
+              self.modify("DROP TABLE IF EXISTS Backup_{0}".format(table), verbose=False)
+              self.modify("ALTER TABLE {0} RENAME TO Backup_{0}".format(table), verbose=False)
+              self.modify("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {}'.format(c,t) for c,t in zip(columns,types)])), verbose=False)
+              self.modify("INSERT INTO {0} ({1}) SELECT {1} FROM Backup_{0}".format(table, ','.join(columns)), verbose=False)
 
               # Create a dictionary of any reassigned ids from merged SOURCES tables and replace applicable source_ids in other tables.
               print "\nMerging {} tables.\n".format(table.upper())
@@ -414,7 +428,7 @@ class get_db:
                 count += 1
             
               # Insert unique records into master
-              for d in data: self.modify("INSERT INTO {} VALUES({})".format(table, ','.join(['?' for c in columns])), d)
+              for d in data: self.modify("INSERT INTO {} VALUES({})".format(table, ','.join(['?' for c in columns])), d, verbose=False)
               pprint(zip(*data), names=columns, title="{} records added to {} table at '{}':".format(len(data), table, master))
               
               # Run clean_up on the table to check for conflicts
@@ -422,10 +436,10 @@ class get_db:
           
               # Undo all changes to table if merge is aborted. Otherwise, push table changes to master.
               if abort: 
-                self.modify("DROP TABLE {0}".format(table))
-                self.modify("ALTER TABLE Backup_{0} RENAME TO {0}".format(table))
+                self.modify("DROP TABLE {0}".format(table), verbose=False)
+                self.modify("ALTER TABLE Backup_{0} RENAME TO {0}".format(table), verbose=False)
               else: 
-                self.modify("DROP TABLE Backup_{0}".format(table))
+                self.modify("DROP TABLE Backup_{0}".format(table), verbose=False)
                 modified_tables.append(table.upper())
           
           else: print "\n{} tables identical.".format(table.upper())
@@ -433,11 +447,20 @@ class get_db:
       # Add data to CHANGELOG table
       if not diff_only:
         user_description = raw_input('\nPlease describe the changes made in this merge: ')
-        self.modify("INSERT INTO changelog VALUES(?, ?, ?, ?, ?, ?, ?)", (None, date, user, machine_name, ', '.join(modified_tables), user_description, os.path.basename(conflicted)))
+        self.modify("INSERT INTO changelog VALUES(?, ?, ?, ?, ?, ?, ?)", \
+                    (None, date, user, machine_name, ', '.join(modified_tables), user_description, os.path.basename(conflicted)),\
+                    verbose=False)
       
       # Finish up and detach
-      print "\nMerge complete!" if not diff_only else "\nDiff complete. No changes made to either database."
-      con.modify("DETACH DATABASE c"), self.modify("DETACH DATABASE c"), con.modify("DETACH DATABASE m"), self.modify("DETACH DATABASE m")
+      if diff_only:
+        print "\nDiff complete. No changes made to either database. Set `diff_only=False' to apply merge."
+      else:
+        print "\nMerge complete!"
+        
+      con.modify("DETACH DATABASE c", verbose=False)
+      self.modify("DETACH DATABASE c", verbose=False)
+      con.modify("DETACH DATABASE m", verbose=False)
+      self.modify("DETACH DATABASE m", verbose=False)
     else: print "File '{}' not found!".format(conflicted)
 
   def modify(self, SQL, params='', verbose=True):
@@ -606,7 +629,7 @@ class get_db:
       else:
         print 'Queries must begin with a SELECT or PRAGMA statement. For database modifications use self.modify() method.'  
     
-    except:
+    except IOError:
       print 'Could not execute: '+SQL
 
   def search(self, criterion, table, columns='', fetch=False):
@@ -850,6 +873,26 @@ def convert_array(array):
   out.seek(0)
   return np.load(out)
   
+def adapt_spectrum(spec):
+  """
+  Adapts a SPECTRUM object into a string to put into the database
+  
+  Parameters
+  ----------
+  spec: str, astrodbkit.astrodb.Spectrum
+    The spectrum object to convert or string to put into the database
+  
+  Returns
+  -------
+  spec: str
+    The file path to place in the database
+  """ 
+  if isinstance(spec,str): pass
+  else: spec = '$BDNYC_spectra'+spec.path.split('BDNYC_spectra')[1]
+  
+  return spec
+  
+  
 def convert_spectrum(File):
   """
   Converts a SPECTRUM data type stored in the database into a (W,F,E) sequence of arrays.
@@ -1062,6 +1105,7 @@ def __get_spec(fitsData, fitsHeader, fileName):
 
 # Register the adapters
 sqlite3.register_adapter(np.ndarray, adapt_array)
+# sqlite3.register_adapter(str, adapt_spectrum)
 
 # Register the converters
 sqlite3.register_converter("ARRAY", convert_array)
