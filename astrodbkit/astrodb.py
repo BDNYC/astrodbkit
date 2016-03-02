@@ -120,8 +120,15 @@ class get_db:
         del_records = []
         for n,new_rec in enumerate(new_records):
           
+          # Convert relative path to absolute path
+          relpath = new_rec['spectrum']
+          if relpath.startswith('$'):
+            abspath = os.popen('echo {}'.format(relpath.split('/')[0])).read()[:-1]
+            if abspath: new_rec['spectrum'] = relpath.replace(relpath.split('/')[0],abspath)
+          
           # Test if the file exists and try to pull metadata from the FITS header
           if os.path.isfile(new_rec['spectrum']):
+            new_records[n]['spectrum'] = relpath
             new_records[n] = _autofill_spec_record(new_rec)
           else: 
             print 'Error adding the spectrum at {}'.format(new_rec['spectrum'])
@@ -144,8 +151,8 @@ class get_db:
         print 'No new records added to the {} table. Check your input file {}'.format(table,ascii)
     
       # Run table clean up
-      try: self.clean_up(table)
-      except: print 'Could not run clean_up() method.' 
+      # try: self.clean_up(table)
+      # except: print 'Could not run clean_up() method.' 
     
     else: print 'Please check the file path {}'.format(ascii)
  
@@ -180,15 +187,15 @@ class get_db:
     # Check for records with identical required values but different ids.            
     if table.lower()!='sources': req_keys = columns[np.where(np.logical_and(required,columns!='id'))]
 
-    # List of new pairs to ignore
-    new_ignore = []
+    # List of old and new pairs to ignore
+    ignore, new_ignore = ignore or [], []
 
     while any(duplicate):      
       # Pull out duplicates one by one
       duplicate = self.query("SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.source_id=t2.source_id WHERE t1.id!=t2.id AND {1}{2}{3}"\
                               .format(table, ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]), (' AND '\
                               +' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))".format(','.join(map(str,[id1,id2]))) for id1,id2 \
-                              in zip(ignore['id1'],ignore['id2'])])) if ignore!='' else '', (' AND '\
+                              in zip(ignore['id1'],ignore['id2'])])) if ignore else '', (' AND '\
                               +' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))".format(','.join(map(str,ni))) for ni \
                               in new_ignore])) if new_ignore else ''), fetch='one')
 
