@@ -19,11 +19,11 @@ def create_database(dbpath):
 
   """
   if dbpath.endswith('.db'):
-    sources_table = "CREATE TABLE sources (id INTEGER PRIMARY KEY, ra REAL, dec REAL, designation TEXT, publication_id INTEGER, comments TEXT, shortname TEXT, names TEXT)"
+    sources_table = "CREATE TABLE sources (id INTEGER PRIMARY KEY, ra REAL, dec REAL, designation TEXT, publication_id INTEGER, shortname TEXT, names TEXT, comments TEXT)"
     os.system("sqlite3 {} '{}'".format(dbpath,sources_table))
     if os.path.isfile(dbpath):
       print "\nDatabase created! To load, run\n\ndb = astrodb.get_db('{}')\n\nThen run db.modify_table() method to create tables.".format(dbpath)
-  else: print "Please provide a path and file name with a .db file extension, e.g. /Users/Me/Desktop/test.db"
+  else: print "Please provide a path and file name with a .db file extension, e.g. /Users/<username>/Desktop/test.db"
 
 class get_db:
   def __init__(self, dbpath):
@@ -59,6 +59,9 @@ class get_db:
       self.dict = con.cursor()
       self.dict.row_factory = dict_factory
       self.dict = self.dict.execute
+    
+      # Make sure the ignore table exists
+      self.list("CREATE TABLE IF NOT EXISTS ignore (id INTEGER PRIMARY KEY, id1 INTEGER, id2 INTEGER, tablename TEXT)")
     
     else: print "Sorry, no such file '{}'".format(dbpath)
 
@@ -171,7 +174,7 @@ class get_db:
     metadata = self.query("PRAGMA table_info({})".format(table), fmt='table')
     columns, types, required = [np.array(metadata[n]) for n in ['name','type','notnull']]
     records = self.query("SELECT * FROM {}".format(table), fmt='table')
-    ignore = self.query("SELECT * FROM ignore WHERE table_name LIKE ?", (table,))
+    ignore = self.query("SELECT * FROM ignore WHERE tablename LIKE ?", (table,))
     duplicate, command = [1], ''
     
     # Remove records with missing required values
