@@ -356,7 +356,9 @@ class Database:
         
           # Plot all the spectra
           if plot and table.lower()=='spectra' and data:
-            for i in self.query("SELECT id FROM spectra WHERE source_id={}".format(source_id), unpack=True)[0]: 
+            if len(data)>5: print 'Only plotting first 5 spectra. Run plot_spectrum() method to plot individually.'
+            
+            for i in self.query("SELECT id FROM spectra WHERE source_id={} LIMIT 5".format(source_id), unpack=True)[0]: 
               self.plot_spectrum(i)
               
         else: pass
