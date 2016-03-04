@@ -22,7 +22,7 @@ def create_database(dbpath):
     sources_table = "CREATE TABLE sources (id INTEGER PRIMARY KEY, ra REAL, dec REAL, designation TEXT, publication_id INTEGER, shortname TEXT, names TEXT, comments TEXT)"
     os.system("sqlite3 {} '{}'".format(dbpath,sources_table))
     if os.path.isfile(dbpath):
-      print "\nDatabase created! To load, run\n\ndb = astrodb.get_db('{}')\n\nThen run db.modify_table() method to create tables.".format(dbpath)
+      print "\nDatabase created! To load, run\n\ndb = astrodb.Database('{}')\n\nThen run db.modify_table() method to create tables.".format(dbpath)
   else: print "Please provide a path and file name with a .db file extension, e.g. /Users/<username>/Desktop/test.db"
 
 class Database:
@@ -384,7 +384,7 @@ class Database:
     """
     if os.path.isfile(conflicted):
       # Load and attach master and conflicted databases
-      con, master, reassign = get_db(conflicted), self.list("PRAGMA database_list").fetchall()[0][2], {}
+      con, master, reassign = Database(conflicted), self.list("PRAGMA database_list").fetchall()[0][2], {}
       con.modify("ATTACH DATABASE '{}' AS m".format(master), verbose=False)
       self.modify("ATTACH DATABASE '{}' AS c".format(conflicted), verbose=False)
       con.modify("ATTACH DATABASE '{}' AS c".format(conflicted), verbose=False)
@@ -416,7 +416,9 @@ class Database:
           if any([i not in conflicted_cols for i in columns]): 
             con.modify("DROP TABLE IF EXISTS Conflicted_{0}".format(table))
             con.modify("ALTER TABLE {0} RENAME TO Conflicted_{0}".format(table))
-            con.modify("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {} {}{}'.format(c,t,r,' UNIQUE' if c=='id' else '') for c,t,r in zip(columns,types,constraints*['NOT NULL'])])))
+            con.modify("CREATE TABLE {0} ({1})".format(table, ', '.join(\
+                      ['{} {} {}{}'.format(c,t,r,' UNIQUE PRIMARY KEY' if c=='id' else '') \
+                      for c,t,r in zip(columns,types,constraints*['NOT NULL'])])))
             con.modify("INSERT INTO {0} ({1}) SELECT {1} FROM Conflicted_{0}".format(table, ','.join(conflicted_cols)))
             con.modify("DROP TABLE Conflicted_{0}".format(table))
         
@@ -434,7 +436,9 @@ class Database:
               # Make temporary table copy so changes can be undone at any time
               self.modify("DROP TABLE IF EXISTS Backup_{0}".format(table), verbose=False)
               self.modify("ALTER TABLE {0} RENAME TO Backup_{0}".format(table), verbose=False)
-              self.modify("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {} {}{}'.format(c,t,r,' UNIQUE' if c=='id' else '') for c,t,r in zip(columns,types,constraints*['NOT NULL'])])), verbose=False)
+              self.modify("CREATE TABLE {0} ({1})".format(table, ', '.join(\
+                          ['{} {} {}{}'.format(c,t,r,' UNIQUE PRIMARY KEY' if c=='id' else '') \
+                          for c,t,r in zip(columns,types,constraints*['NOT NULL'])])), verbose=False)
               self.modify("INSERT INTO {0} ({1}) SELECT {1} FROM Backup_{0}".format(table, ','.join(columns)), verbose=False)
 
               # Create a dictionary of any reassigned ids from merged SOURCES tables and replace applicable source_ids in other tables.
