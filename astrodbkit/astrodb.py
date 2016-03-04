@@ -25,7 +25,7 @@ def create_database(dbpath):
       print "\nDatabase created! To load, run\n\ndb = astrodb.get_db('{}')\n\nThen run db.modify_table() method to create tables.".format(dbpath)
   else: print "Please provide a path and file name with a .db file extension, e.g. /Users/<username>/Desktop/test.db"
 
-class get_db:
+class Database:
   def __init__(self, dbpath):
     """
     Initialize the database.
