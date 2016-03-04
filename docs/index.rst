@@ -15,6 +15,9 @@ To install, do::
 
     pip install astrodbkit
 
+To make sure you have the latest version
+    pip install astrodbkit --upgrade
+
 To load the package in python
      from astrodbkit import astrodb
 
