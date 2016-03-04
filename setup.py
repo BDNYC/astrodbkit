@@ -13,7 +13,7 @@ from os import path
 
 setup(
     name='astrodbkit',
-    version='0.3.0.post3',
+    version='0.3.0.post4',
     description='Astronomy database management using SQL and Python',
     url='https://github.com/BDNYC/astrodbkit.git',
     author='Joe Filippazzo',
