@@ -65,16 +65,16 @@ class get_db:
     
     else: print "Sorry, no such file '{}'".format(dbpath)
 
-  def add_data(self, ascii, table, delimiter='|', bands=''):
+  def add_data(self, data, table, delimiter='|', bands=''):
     """
-    Adds data in **ascii** file to the specified database **table**. 
-    Note column names (row 1 of ascii file) must match table fields to insert, 
+    Adds data to the specified database table. Column names must match table fields to insert, 
     however order and completeness don't matter.
     
     Parameters
     ----------
-    ascii: str
-      The path to the ascii file to be read in.
+    data: str, sequence
+      The path to an ascii file or a list of lists. The first row or element must
+      be the list of column names
     table: str
       The name of the table into which the data should be inserted
     delimiter: str
@@ -84,11 +84,21 @@ class get_db:
       multiple photometric measurements (e.g. ['MKO_J','MKO_H','MKO_K']) into individual 
       rows of data for database insertion
     
-    """
-    if os.path.isfile(ascii):
-      
-      # Digest the ascii file into table
-      data = ii.read(ascii)
+    """ 
+    # Store raw entry
+    entry = data
+    
+    # Digest the ascii file into table
+    if isinstance(data,str) and os.path.isfile(data): 
+      data = ii.read(data)
+    
+    # Or add the sequence of data elements into a table
+    elif isinstance(data,(list,tuple,np.ndarray)):
+      data = at.Table(list(np.asarray(data[1:]).T), names=data[0], dtype=[type(i) for i in data[1]])
+    
+    else: data = None
+    
+    if data:
 
       # Get list of all columns and make an empty table for new records
       metadata = self.query("PRAGMA table_info({})".format(table), fmt='table')
@@ -151,13 +161,13 @@ class get_db:
       if new_records: 
         pprint(new_records, names=columns, title="{} new records added to the {} table.".format(len(new_records),table.upper()))
       else: 
-        print 'No new records added to the {} table. Check your input file {}'.format(table,ascii)
+        print 'No new records added to the {} table. Please check your input: {}'.format(table,entry)
     
       # Run table clean up
-      # try: self.clean_up(table)
-      # except: print 'Could not run clean_up() method.' 
+      try: self.clean_up(table)
+      except: print 'Could not run clean_up() method.' 
     
-    else: print 'Please check the file path {}'.format(ascii)
+    else: print 'Please check your input: {}'.format(entry)
  
   def clean_up(self, table):
     """
@@ -176,7 +186,7 @@ class get_db:
     records = self.query("SELECT * FROM {}".format(table), fmt='table')
     ignore = self.query("SELECT * FROM ignore WHERE tablename LIKE ?", (table,))
     duplicate, command = [1], ''
-    
+
     # Remove records with missing required values
     req_keys = columns[np.where(required)]
     try:
@@ -383,7 +393,7 @@ class get_db:
       
       # Gather user data to add to CHANGELOG table
       import socket, datetime
-      user = raw_input('Please enter your name : '), 
+      if not diff_only: user = raw_input('Please enter your name : ')
       machine_name = socket.gethostname()
       date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
       modified_tables = []
@@ -392,7 +402,7 @@ class get_db:
       tables = tables or ['sources']+[t for t in zip(*self.list("SELECT * FROM sqlite_master WHERE name NOT LIKE '%Backup%' AND name!='sqlite_sequence' AND type='table'{}".format(" AND name IN ({})".format("'"+"','".join(tables)+"'") if tables else '')))[1] if t!='sources']
       for table in tables:
         # Get column names and data types from master table and column names from conflicted table
-        columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
+        columns, types, constraints = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:4]
         conflicted_cols = con.query("PRAGMA table_info({})".format(table), unpack=True)[1]
                 
         if any([i not in columns for i in conflicted_cols]):
@@ -404,7 +414,7 @@ class get_db:
           if any([i not in conflicted_cols for i in columns]): 
             con.modify("DROP TABLE IF EXISTS Conflicted_{0}".format(table))
             con.modify("ALTER TABLE {0} RENAME TO Conflicted_{0}".format(table))
-            con.modify("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {}'.format(c,t) for c,t in zip(columns,types)])))
+            con.modify("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {} {}{}'.format(c,t,r,' UNIQUE' if c=='id' else '') for c,t,r in zip(columns,types,constraints*['NOT NULL'])])))
             con.modify("INSERT INTO {0} ({1}) SELECT {1} FROM Conflicted_{0}".format(table, ','.join(conflicted_cols)))
             con.modify("DROP TABLE Conflicted_{0}".format(table))
         
@@ -422,7 +432,7 @@ class get_db:
               # Make temporary table copy so changes can be undone at any time
               self.modify("DROP TABLE IF EXISTS Backup_{0}".format(table), verbose=False)
               self.modify("ALTER TABLE {0} RENAME TO Backup_{0}".format(table), verbose=False)
-              self.modify("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {}'.format(c,t) for c,t in zip(columns,types)])), verbose=False)
+              self.modify("CREATE TABLE {0} ({1})".format(table, ', '.join(['{} {} {}{}'.format(c,t,r,' UNIQUE' if c=='id' else '') for c,t,r in zip(columns,types,constraints*['NOT NULL'])])), verbose=False)
               self.modify("INSERT INTO {0} ({1}) SELECT {1} FROM Backup_{0}".format(table, ','.join(columns)), verbose=False)
 
               # Create a dictionary of any reassigned ids from merged SOURCES tables and replace applicable source_ids in other tables.
@@ -457,9 +467,8 @@ class get_db:
       # Add data to CHANGELOG table
       if not diff_only:
         user_description = raw_input('\nPlease describe the changes made in this merge: ')
-        self.modify("INSERT INTO changelog VALUES(?, ?, ?, ?, ?, ?, ?)", \
-                    (None, date, user, machine_name, ', '.join(modified_tables), user_description, os.path.basename(conflicted)),\
-                    verbose=False)
+        self.list("INSERT INTO changelog VALUES(?, ?, ?, ?, ?, ?, ?)", \
+                    (None, date, str(user), machine_name, ', '.join(modified_tables), user_description, os.path.basename(conflicted)))
       
       # Finish up and detach
       if diff_only:
