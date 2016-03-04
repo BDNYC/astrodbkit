@@ -15,6 +15,9 @@ To install, do::
 
     pip install astrodbkit
 
+To load the package in python
+     from astrodbkit import astrodb
+
 Creating a Database
 ===================
 
