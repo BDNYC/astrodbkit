@@ -68,6 +68,10 @@ Or all the papers published by Joe Filippazzo::
 
     db.search('Fili', 'publications')
 
+Search for a specific source id::
+
+   db.search('123', 'sources',columns=['id'])
+
 You can also pass SQL queries wrapped in double-quotes (") to the :py:meth:`~astrodb.get_db.query` method::
 
     data = db.query( "SQL_query_goes_here" )
