@@ -72,7 +72,7 @@ Search for a specific source id::
 
    db.search('123', 'sources',columns=['id'])
 
-Return results of search into an astropy table
+Return results of search into an astropy table (http://docs.astropy.org/en/stable/table/)
 
   object123 = db.search('123', 'sources',columns=['id'], fetch=True)
 
