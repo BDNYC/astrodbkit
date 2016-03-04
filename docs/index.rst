@@ -72,6 +72,10 @@ Search for a specific source id::
 
    db.search('123', 'sources',columns=['id'])
 
+Return results of search into an astropy table
+
+  object123 = db.search('123', 'sources',columns=['id'], fetch=True)
+
 You can also pass SQL queries wrapped in double-quotes (") to the :py:meth:`~astrodb.get_db.query` method::
 
     data = db.query( "SQL_query_goes_here" )
