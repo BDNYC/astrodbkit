@@ -1190,12 +1190,13 @@ def clean_header(header):
 
 def _help():
   print ' '
-  pprint(np.asarray([['[column name]','Display full record entry for that column without taking action'], \
+  pprint(np.asarray([['<column name>','Display full record entry for that column without taking action'], \
                    ['k','Keeps both records and assigns second one new id if necessary'], \
                    ['r','Replaces all columns of first record with second record values'], \
-                   ['r [column name] [column name]...','Replaces specified columns of first record with second record values'], \
+                   ['r <column name> <column name>...','Replaces specified columns of first record with second record values'], \
                    ['c','Complete empty columns of first record with second record values where possible'], \
                    ['[Enter]','Keep first record and delete second'],\
+                   ['sql <SQLite query>','Execute arbitrary raw SQLite command.']
                    ['abort','Abort merge of current table, undo all changes, and proceed to next table']]), \
                    names=['Command','Result'])
 
