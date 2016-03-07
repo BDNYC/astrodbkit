@@ -48,6 +48,7 @@ class Database:
       con = sqlite3.connect(dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
       con.text_factory = str
       self.conn = con
+      self.close = self.conn.close
       self.list = con.cursor().execute
             
       # Make dictionary
