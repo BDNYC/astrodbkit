@@ -216,7 +216,7 @@ class Database:
       try:
         
         # Run record matches through comparison and return the command 
-        command = self._compare_records(table, duplicate, delete=True)
+        command = self._compare_records(table, duplicate)
         
         # Add acceptible duplicates to ignore list or abort
         if command=='keep': 
@@ -233,7 +233,7 @@ class Database:
       return 'abort'
     else: print '\nFinished clean up on {} table.'.format(table.upper())
 
-  def _compare_records(self, table, duplicate, options=['r','c','k','sql'], delete=False):
+  def _compare_records(self, table, duplicate, options=['r','c','k','sql']):
     """
     Compares similar records and prompts the user to make decisions about keeping, updating, or modifying records in question.
   
@@ -245,8 +245,6 @@ class Database:
       The ids of the potentially duplicate records
     options: list
       The allowed options: 'r' for replace, 'c' for complete, 'k' for keep, 'sql' for raw SQL input.
-    delete: bool
-      Delete the record with the higher id.
     
     """
     # Print the old and new records suspectred of being duplicates
@@ -254,52 +252,65 @@ class Database:
     columns = data.colnames[1:]
     old, new = [[data[n][k] for k in columns[1:]] for n in [0,1]]
 
-    # Print the command key
+    # Prompt the user for action
     replace = raw_input("\nKeep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(duplicate[0])).lower()
     while replace in columns or replace=='help':
-      if replace in columns: pprint(np.asarray([[i for idx,i in enumerate(old) if idx in [0,columns.index(replace)]],[i for idx,i in enumerate(new) if idx in [0,columns.index(replace)]]]), names=['id',replace])    
+      if replace in columns: pprint(np.asarray([[i for idx,i in enumerate(old) if idx in [0,columns.index(replace)]],\
+                                                [i for idx,i in enumerate(new) if idx in [0,columns.index(replace)]]]), \
+                                                names=['id',replace])    
       elif replace=='help': _help()
       replace = raw_input("\nKeep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(duplicate[0]))
+    replace = replace.strip()
 
-    if replace in options:
+    if replace.split()[0] in options:
       
-      # Replace the old record with the new record
+      # Replace the entire old record with the new record
       if replace=='r':
         sure = raw_input('Are you sure you want to replace record {} with record {}? [y/n] : '.format(*duplicate))
         if sure.lower()=='y':
-          self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[1]), verbose=False)
+          self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[0]), verbose=False)
           self.modify("UPDATE {} SET id={} WHERE id={}".format(table, duplicate[0], duplicate[1]), verbose=False)
       
-      # Replace specific records
-      elif replace.startswith('r') and all([i in list(columns)+options for i in replace.split()]):
-        empty_cols, new_vals = zip(*[['{}=?'.format(e),n] for e,n in zip(columns,new) if e in replace])
-        if empty_cols:
-          if delete: self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[1]), verbose=False)
-          self.modify("UPDATE {} SET {} WHERE id={}".format(table, ','.join(empty_cols), duplicate[0]), tuple(new_vals), verbose=False)
+      # Replace specific columns
+      elif replace.startswith('r'):
+        replace_cols = replace.split()[1:]
+        if all([i in columns for i in replace_cols]):
+          empty_cols, new_vals = zip(*[['{}=?'.format(e),n] for e,n in zip(columns,new) if e in replace_cols])
+          if empty_cols:
+            self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[1]), verbose=False)
+            self.modify("UPDATE {} SET {} WHERE id={}".format(table, ','.join(empty_cols), duplicate[0]), tuple(new_vals), verbose=False)
+        else: 
+          badcols = ','.join([i for i in replace_cols if i not in columns])
+          print "\nInvalid column names for {} table: {}".format(table, badcols)
       
       # Complete the old record with any missing data provided in the new record, then delete the new record
       elif replace=='c':
         try:
-          empty_cols, new_vals = zip(*[['{}=?'.format(e),n] for e,o,n in zip(columns,old,new) if repr(o).lower() in ['','none','null'] and repr(n).lower() not in ['','none','null']])
+          empty_cols, new_vals = zip(*[['{}=?'.format(e),n] for e,o,n in zip(columns[1:],old,new) if n and not o])
           self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[1]), verbose=False)
           self.modify("UPDATE {} SET {} WHERE id={}".format(table, ','.join(empty_cols), duplicate[0]), tuple(new_vals), verbose=False)
         except:
           pass
       
       # Keep both records
-      elif replace=='k': return 'keep'
+      elif replace=='k': 
+        return 'keep'
       
       # Execute raw SQL
-      elif replace.startswith('sql ') and 'sql' in options: 
-        try: self.modify(replace[4:], verbose=False)
-        except: print 'Invalid SQLite statement: {}'.format(replace[4:])
+      elif replace.startswith('sql') and 'sql' in options: 
+        self.modify(replace[4:], verbose=False)
     
     # Abort the current database clean up
-    elif replace=='abort': return 'abort'
+    elif replace=='abort': 
+      return 'abort'
     
-    # Delete the current record if *delete=True
+    # Delete the current record
     elif not replace:
       self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[1]), verbose=False)
+    
+    # Prompt again
+    else:
+      print "\nInvalid command: {}\nTry again or type 'help' or 'abort'.\n".format(replace)
           
   def inventory(self, source_id, plot=False, fetch=False, fmt='table'):
     """
@@ -1151,19 +1162,23 @@ def pprint(data, names='', title=''):
     
   """
   # Make the data into a table if it isn't already
-  if type(data)!=at.Table: data = at.Table(data, names=names)
+  if type(data)!=at.Table: 
+    data = at.Table(data, names=names)
+  
+  # Make a copy
+  pdata = data.copy()
   
   # Put the title in the metadata
-  try: title = title or data.meta['name']
+  try: title = title or pdata.meta['name']
   except: pass
   
   # Shorten the column names for slimmer data
-  for old,new in zip(*[data.colnames,[i.replace('wavelength','wav').replace('publication','pub').replace('instrument','inst').replace('telescope','scope') for i in data.colnames]]): 
-    data.rename_column(old,new) if new!=old else None
+  for old,new in zip(*[pdata.colnames,[i.replace('wavelength','wav').replace('publication','pub').replace('instrument','inst').replace('telescope','scope') for i in pdata.colnames]]): 
+    pdata.rename_column(old,new) if new!=old else None
   
   # Print it!
   if title: print '\n'+title
-  ii.write(data, sys.stdout, Writer=ii.FixedWidthTwoLine, formats={'comments': '%.15s', 'obs_date': '%.10s', 'names': '%.20s', 'description': '%.50s'}, fill_values=[('None', '-')])
+  ii.write(pdata, sys.stdout, Writer=ii.FixedWidthTwoLine, formats={'comments': '%.15s', 'obs_date': '%.10s', 'names': '%.20s', 'description': '%.50s'}, fill_values=[('None', '-')])
 
 def clean_header(header):
   try:
