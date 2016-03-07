@@ -558,7 +558,7 @@ class Database:
       
     else: print "No spectrum found with id {}".format(spectrum_id)
   
-  def plot_spectrum(self, spectrum_id, overplot=False, color='b'):
+  def plot_spectrum(self, spectrum_id, overplot=False, color='b', norm=False):
     """
     Plots spectrum **ID** from SPECTRA table.
     
@@ -570,12 +570,15 @@ class Database:
       Overplot the spectrum
     color: str
       The color used for the data
+    norm: bool, sequence
+      True or (min,max) wavelength range in which to normalize the spectrum
       
     """
     i = self.query("SELECT * FROM spectra WHERE id={}".format(spectrum_id), fetch='one', fmt='dict')
     if i:
       try:
         spec = i['spectrum']
+        w, f, e = scrub(spec.data, units=False)
         
         # Draw the axes and add the metadata
         if not overplot: 
@@ -583,13 +586,27 @@ class Database:
           plt.rc('text', usetex=False)
           ax.set_yscale('log', nonposy='clip'), plt.title('source_id = {}'.format(i['source_id']))
           plt.figtext(0.15,0.88, '{}\n{}\n{}\n{}'.format(i['filename'],self.query("SELECT name FROM telescopes WHERE id={}".format(i['telescope_id']), fetch='one')[0] if i['telescope_id'] else '',self.query("SELECT name FROM instruments WHERE id={}".format(i['instrument_id']), fetch='one')[0] if i['instrument_id'] else '',i['obs_date']), verticalalignment='top')
-          ax.set_xlabel('[{}]'.format(i['wavelength_units'])), ax.set_ylabel('[{}]'.format(i['flux_units'])), ax.legend(loc=8, frameon=False)
+          ax.set_xlabel(r'$\lambda$ [{}]'.format(i['wavelength_units'])), ax.set_ylabel(r'$F_\lambda$ [{}]'.format(i['flux_units'])), ax.legend(loc=8, frameon=False)
         else: ax = plt.gca()
         
+        # Normalize the data
+        if norm:
+          try:
+            if isinstance(norm,bool): norm = (min(w),max(w))
+
+            # Normalize to the specified window
+            norm_mask = np.logical_and(w>=norm[0],w<=norm[1])
+            C = 1./np.trapz(f[norm_mask], x=w[norm_mask])
+            f *= C
+            try: e *= C
+            except: pass
+            
+          except: print 'Could not normalize.'
+        
         # Plot the data
-        ax.loglog(spec.data[0], spec.data[1], c=color, label='spec_id: {}'.format(i['id']))
+        ax.loglog(w, f, c=color, label='spec_id: {}'.format(i['id']))
         X, Y = plt.xlim(), plt.ylim()
-        try: ax.fill_between(spec.data[0], spec.data[1]-spec.data[2], spec.data[1]+spec.data[2], color=color, alpha=0.3), ax.set_xlim(X), ax.set_ylim(Y)
+        try: ax.fill_between(w, f-e, f+e, color=color, alpha=0.3), ax.set_xlim(X), ax.set_ylim(Y)
         except: print 'No uncertainty array for spectrum {}'.format(spectrum_id)
       except: print "Could not plot spectrum {}".format(spectrum_id); plt.close()
     else: print "No spectrum {} in the SPECTRA table.".format(spectrum_id)
@@ -1200,6 +1217,17 @@ def _help():
                    ['sql <SQLite query>','Execute arbitrary raw SQLite command.']
                    ['abort','Abort merge of current table, undo all changes, and proceed to next table']]), \
                    names=['Command','Result'])
+
+def scrub(data, units=False):
+  """
+  For input data [w,f,e] or [w,f] returns the list with NaN, negative, and zero flux (and corresponsing wavelengths and errors) removed. 
+  """
+  units = [i.unit if hasattr(i,'unit') else 1 for i in data]
+  data = [np.asarray(i.value if hasattr(i,'unit') else i, dtype=np.float32) for i in data if isinstance(i,np.ndarray)]
+  data = [i[np.where(~np.isinf(data[1]))] for i in data]
+  data = [i[np.where(np.logical_and(data[1]>0,~np.isnan(data[1])))] for i in data]
+  data = [i[np.unique(data[0], return_index=True)[1]] for i in data]
+  return [i[np.lexsort([data[0]])]*Q for i,Q in zip(data,units)] if units else [i[np.lexsort([data[0]])] for i in data]
 
 def _autofill_spec_record(record):
   """
