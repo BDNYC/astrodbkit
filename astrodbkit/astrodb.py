@@ -88,6 +88,7 @@ class Database:
     """ 
     # Store raw entry
     entry = data
+    del_records = []
     
     # Digest the ascii file into table
     if isinstance(data,str) and os.path.isfile(data): 
@@ -128,10 +129,11 @@ class Database:
       # Reject rows that fail column requirements, e.g. NOT NULL fields like 'source_id'
       for r in columns[np.where(np.logical_and(required,columns!='id'))]: 
         new_records = new_records[np.where(new_records[r])]
+        if new_records.dtype[r] in (int,float):
+          new_records = new_records[~np.isnan(new_records[r])]
     
       # For spectra, try to populate the table by reading the FITS header
       if table.lower()=='spectra':
-        del_records = []
         for n,new_rec in enumerate(new_records):
           
           # Convert relative path to absolute path
@@ -151,15 +153,20 @@ class Database:
         # Remove bad records from the table
         new_records.remove_rows(del_records)
 
+      # Get some new row ids for the good records
+      rowids = self._lowest_rowids(table, len(new_records))
+      
       # Add the new records
-      for new_rec in new_records:
+      for N,new_rec in enumerate(new_records):
         new_rec = list(new_rec)
+        new_rec[0] = rowids[N]
         for n,col in enumerate(new_rec): 
           if type(col)==np.ma.core.MaskedConstant: new_rec[n] = None
-        self.modify("INSERT INTO {} VALUES({})".format(table, ','.join('?'*len(columns))), new_rec)
+        self.modify("INSERT INTO {} VALUES({})".format(table, ','.join('?'*len(columns))), new_rec, verbose=False)
+        new_records[N]['id'] = rowids[N]
     
       # Print a table of the new records or bad news
-      if new_records: 
+      if new_records:
         pprint(new_records, names=columns, title="{} new records added to the {} table.".format(len(new_records),table.upper()))
       else: 
         print 'No new records added to the {} table. Please check your input: {}'.format(table,entry)
@@ -379,6 +386,34 @@ class Database:
         print 'Could not retrieve data from {} table.'.format(table.upper())
     
     if fetch: return data_tables
+
+  def _lowest_rowids(self, table, limit):
+    """
+    Gets the lowest available row ids for table insertion. Keeps things tidy!
+    
+    Parameters
+    ----------
+    table: str
+      The name of the table being modified
+    limit: int
+      The number of row ids needed
+      
+    Returns
+    -------
+    available: sequence
+      An array of all available row ids
+    
+    """
+    ids = self.query("SELECT id FROM {}".format(table), unpack=True)[0]
+    all_ids = np.array(range(1,max(ids)))
+    available = all_ids[np.in1d(all_ids, ids, assume_unique=True, invert=True)][:limit]
+    
+    # If there aren't enough empty row ids, start using the new ones 
+    if len(available)<limit:
+      diff = limit-len(available)
+      available = np.concatenate((available,np.array(range(max(ids)+1,max(ids)+1+diff))))
+    
+    return available
 
   def merge(self, conflicted, tables=[], diff_only=True):
     """
