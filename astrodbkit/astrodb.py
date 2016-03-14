@@ -88,18 +88,17 @@ class Database:
     """ 
     # Store raw entry
     entry = data
-    del_records = []
     
     # Digest the ascii file into table
     if isinstance(data,str) and os.path.isfile(data): 
       data = ii.read(data)
     
-    # Or add the sequence of data elements into a table
+    # Or read the sequence of data elements into a table
     elif isinstance(data,(list,tuple,np.ndarray)):
-      data = at.Table(list(np.asarray(data[1:]).T), names=data[0], dtype=[type(i) for i in data[1]])
+      data = ii.read(['|'.join(map(str,row)) for row in data], data_start=1, delimiter='|')
     
     else: data = None
-    
+
     if data:
 
       # Get list of all columns and make an empty table for new records
@@ -128,10 +127,16 @@ class Database:
     
       # Reject rows that fail column requirements, e.g. NOT NULL fields like 'source_id'
       for r in columns[np.where(np.logical_and(required,columns!='id'))]: 
+        # Null values...
         new_records = new_records[np.where(new_records[r])]
+        
+        # Masked values...
+        new_records = new_records[~new_records[r].mask]
+        
+        # NaN values...
         if new_records.dtype[r] in (int,float):
           new_records = new_records[~np.isnan(new_records[r])]
-    
+
       # For spectra, try to populate the table by reading the FITS header
       if table.lower()=='spectra':
         for n,new_rec in enumerate(new_records):
@@ -191,7 +196,7 @@ class Database:
     # Get the table info and all the records
     metadata = self.query("PRAGMA table_info({})".format(table), fmt='table')
     columns, types, required = [np.array(metadata[n]) for n in ['name','type','notnull']]
-    records = self.query("SELECT * FROM {}".format(table), fmt='table')
+    records = self.query("SELECT * FROM {}".format(table), fmt='table', use_converters=False)
     ignore = self.query("SELECT * FROM ignore WHERE tablename LIKE ?", (table,))
     duplicate, command = [1], ''
 
@@ -256,7 +261,8 @@ class Database:
     
     """
     # Print the old and new records suspectred of being duplicates
-    data = self.query("SELECT * FROM {} WHERE id IN ({})".format(table,','.join(map(str,duplicate))), fmt='table', verbose=True)
+    data = self.query("SELECT * FROM {} WHERE id IN ({})".format(table,','.join(map(str,duplicate))), \
+                      fmt='table', verbose=True, use_converters=False)
     columns = data.colnames[1:]
     old, new = [[data[n][k] for k in columns[1:]] for n in [0,1]]
 
@@ -646,7 +652,7 @@ class Database:
       except: print "Could not plot spectrum {}".format(spectrum_id); plt.close()
     else: print "No spectrum {} in the SPECTRA table.".format(spectrum_id)
 
-  def query(self, SQL, params='', fmt='array', fetch='all', unpack=False, export='', verbose=False):
+  def query(self, SQL, params='', fmt='array', fetch='all', unpack=False, export='', verbose=False, use_converters=True):
     """
     Wrapper for cursors so data can be retrieved as a list or dictionary from same method
     
@@ -664,6 +670,8 @@ class Database:
       The file path of the ascii file to which the data should be exported
     verbose: bool
       Print the data also
+    use_converters: bool
+      Apply converters to columns with custom data types
       
     Returns
     -------
@@ -675,7 +683,7 @@ class Database:
       if SQL.lower().startswith('select') or SQL.lower().startswith('pragma'):
 
         # Make the query explicit so that column and table names are preserved
-        SQL, columns = self._explicit_query(SQL)
+        SQL, columns = self._explicit_query(SQL, use_converters=use_converters)
         
         # Get the data as a dictionary
         dictionary = self.dict(SQL, params).fetchall()
@@ -857,7 +865,7 @@ class Database:
                 types, and constraints are formatted properly.'.format(table.upper(),\
                 'created' if new_table else 'modified')
 
-  def _explicit_query(self, SQL):
+  def _explicit_query(self, SQL, use_converters=True):
     """
     Sorts the column names so they are returned in the same order they are queried. Also turns 
     ambiguous SELECT statements into explicit SQLite language in case column names are not unique.
@@ -866,6 +874,8 @@ class Database:
     ----------
     SQL: str
       The SQLite query to parse
+    use_converters: bool
+      Apply converters to columns with custom data types
     
     Returns
     -------
@@ -889,9 +899,9 @@ class Database:
         except:
           tdict[t] = t
       
-      # Get all the column names
+      # Get all the column names and dtype placeholders
       columns = SQL.replace(' ','').lower().split('distinct' if 'distinct' in SQL.lower() else 'select')[1].split('from')[0].split(',')
-  
+
       # Replace * with the field names
       for n,col in enumerate(columns):
         if '.' in col:
@@ -906,15 +916,24 @@ class Database:
           
         columns[n] = ["{}.{}".format(t,c) if len(tables)>1 else c for c in col]
   
-      # Flatten the list of columns
+      # Flatten the list of columns and dtypes
       columns = [j for k in columns for j in k]
+      
+      # Get the dtypes
+      dSQL = "SELECT " \
+           + ','.join(["typeof({})".format(col) for col in columns])\
+           + ' FROM '+SQL.replace('from','FROM').split('FROM')[-1]
+      if use_converters: dtypes = [None]*len(columns) 
+      else: dtypes = self.list(dSQL).fetchone()
   
       # Reconstruct SQL query
       SQL = "SELECT {}".format('DISTINCT ' if 'distinct' in SQL.lower() else '')\
-          +','.join(["{0} AS '{0}'".format(col) for col in columns])\
-          +' FROM '\
-          +SQL.replace('from','FROM').split('FROM')[-1]
-  
+          + (','.join(["{0} AS '{0}'".format(col) for col in columns])\
+             if use_converters else ','.join(["{1}{0}{2} AS '{0}'".format(col,'CAST(' if dt!='null' else '',' AS {})'.format(dt) if dt!='null' else '') \
+             for dt,col in zip(dtypes,columns)])) \
+          + ' FROM '\
+          + SQL.replace('from','FROM').split('FROM')[-1]
+        
     elif 'pragma' in SQL.lower():
       columns = ['cid','name','type','notnull','dflt_value','pk']
 
