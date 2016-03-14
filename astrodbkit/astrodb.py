@@ -214,14 +214,15 @@ class Database:
     if table.lower()!='sources': req_keys = columns[np.where(np.logical_and(required,columns!='id'))]
 
     # List of old and new pairs to ignore
-    ignore, new_ignore = ignore or [], []
+    if not type(ignore)==np.ndarray: ignore = np.array([])
+    new_ignore = []
 
     while any(duplicate):      
       # Pull out duplicates one by one
       duplicate = self.query("SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.source_id=t2.source_id WHERE t1.id!=t2.id AND {1}{2}{3}"\
                               .format(table, ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]), (' AND '\
                               +' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))".format(','.join(map(str,[id1,id2]))) for id1,id2 \
-                              in zip(ignore['id1'],ignore['id2'])])) if ignore else '', (' AND '\
+                              in zip(ignore['id1'],ignore['id2'])])) if any(ignore) else '', (' AND '\
                               +' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))".format(','.join(map(str,ni))) for ni \
                               in new_ignore])) if new_ignore else ''), fetch='one')
 
