@@ -12,7 +12,7 @@ To start using astrodbkit, launch iPython, import the module, then initialize a 
 
 ```
 from astrodbkit import astrodb
-db = astrodb.get_db(dbpath)
+db = astrodb.Database(dbpath)
 ```
 
 [Read the full documentation here.](http://astrodbkit.readthedocs.org/en/latest/index.html)
