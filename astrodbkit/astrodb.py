@@ -565,7 +565,7 @@ class Database:
     except:
       print "Could not execute: "+SQL
     
-  def output_spectrum(self, spectrum, filepath, header='', original=False):
+  def output_spectrum(self, spectrum, filepath, header={}, original=False):
     """
     Prints a file of the given spectrum to an ascii file with specified filepath.
     
@@ -581,30 +581,34 @@ class Database:
       A dictionary of metadata to add of update in the header
     
     """
+    # If an integer is supplied, get the spectrum from the SPECTRA table
     if isinstance(spectrum, int):
-      # Add option to just copy original file
+      data = self.query("SELECT * FROM spectra WHERE id={}".format(spectrum), fetch='one', fmt='dict')
+      data['header'] = list(map(list, data['spectrum'].header.cards)) + [[k,v,''] for k,v in header.items()]
     
-      data = self.query("SELECT * FROM spectra WHERE id={}".format(spectrum_id), fetch='one', fmt='dict')
-
+    # If a [w,f,e] sequence is supplied, make it into a Spectrum object
     elif isinstance(spectrum, (list,tuple,np.ndarray)):
-      
-      data = {}
+      data = {'spectrum':Spectrum(spectrum, header=header), 'wavelength_units':'', 'flux_units':''}
+      data['header'] = list(map(list, data['spectrum'].header.cards))
 
     if data:
-      fn = '{}{}.txt'.format(filepath, data['filename'] or spectrum_id)
-
+      fn = filepath if filepath.endswith('.txt') else filepath+'spectrum.txt'
+      
       # Write the header
-      header = np.asarray(data['header'].cards)
-      for h in header: h[0] = '# '+h[0]
-      if data['header']: ii.write(header, fn, delimiter='\t', format='no_header')
+      if data['header']:
+        for n,line in enumerate(data['header']): 
+          data['header'][n] = ['# {}'.format(str(line[0])).ljust(10)[:10],'{:50s} / {}'.format(*map(str,line[1:]))]
+        try: ii.write([np.asarray(i) for i in np.asarray(data['header']).T], fn, delimiter='\t', format='no_header')
+        except IOError: pass
     
       # Write the data
+      names = ['# wavelength [{}]'.format(data['wavelength_units']), 'flux [{}]'.format(data['flux_units'])] 
+      if len(data['spectrum'].data)==3: names += ['unc [{}]'.format(data['flux_units'])]
+      
       with open(fn, mode='a') as f: 
-        ii.write([np.asarray(i, dtype=np.float64) for i in data['spectrum']], f, \
-                 names=['# wavelength [{}]'.format(data['wavelength_units']),'flux [{}]'.format(data['flux_units']),'unc [{}]'.format(data['flux_units'])], \
-                 delimiter='\t')
+        ii.write([np.asarray(i, dtype=np.float64) for i in data['spectrum'].data], f, names=names, delimiter='\t')   
     
-    else: print "No spectrum found with id {}".format(spectrum_id)
+    else: print "Could not output spectrum: {}".format(spectrum)
   
   def plot_spectrum(self, spectrum_id, table='spectra', column='spectrum', overplot=False, color='b', norm=False):
     """
@@ -975,8 +979,8 @@ class Spectrum:
     ----------
     data: sequence 
       The [w,f,e] spectrum
-    header: sequence (optional)
-      A sequence of the lines of data to include in the header
+    header: dictionary (optional)
+      A dictionary of data to include in the header
     path: str (optional)
       The absolute path to the original file
     
@@ -987,8 +991,21 @@ class Spectrum:
          
     """
     self.data = data
-    self.header = header
     self.path = path
+    
+    if header and isinstance(header,dict):
+      new_header = pf.Header()
+      for k,v in header.items(): 
+        new_header[k.replace('.','_').replace('#','')] = v
+    elif isinstance(header,pf.header.Header):
+      new_header = header
+    elif header:
+      print('Header data must be a dictionary.')
+      new_header = ''
+    else:
+      new_header = ''
+    
+    self.header = new_header
     
 # ==============================================================================================================================================
 # ================================= Adapters and converters for special data types =============================================================
@@ -1304,6 +1321,8 @@ def clean_header(header):
     for x,y,z in header.cards: new_header[x.replace('.','_').replace('#','')] = (y,z)
     header = pf.PrimaryHDU(header=new_header).header
   except: pass
+  
+  return header
 
 def _help():
   print ' '
