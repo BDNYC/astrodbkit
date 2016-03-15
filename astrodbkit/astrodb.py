@@ -1116,7 +1116,12 @@ def convert_spectrum(File):
         # If no wl axis generated, then clear out all retrieved data for object
         if not spectrum[0]: spectrum = None
       
-      except: pass
+      except: 
+        # Check if the FITS file is just Numpy arrays
+        try:
+          spectrum, header = pf.getdata(File, cache=True, header=True)  
+        except: 
+          pass
     
     # For .txt files
     if File.endswith('.txt'): 
