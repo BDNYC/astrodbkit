@@ -219,12 +219,14 @@ class Database:
 
     while any(duplicate):      
       # Pull out duplicates one by one
-      duplicate = self.query("SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.source_id=t2.source_id WHERE t1.id!=t2.id AND {1}{2}{3}"\
-                              .format(table, ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]), (' AND '\
-                              +' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))".format(','.join(map(str,[id1,id2]))) for id1,id2 \
-                              in zip(ignore['id1'],ignore['id2'])])) if any(ignore) else '', (' AND '\
-                              +' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))".format(','.join(map(str,ni))) for ni \
-                              in new_ignore])) if new_ignore else ''), fetch='one')
+      SQL = "SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.source_id=t2.source_id WHERE t1.id!=t2.id AND {1}{2}{3}"\
+            .format(table, ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]), (' AND '\
+            +' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))".format(','.join(map(str,[id1,id2]))) for id1,id2 \
+            in zip(ignore['id1'],ignore['id2'])])) if any(ignore) else '', (' AND '\
+            +' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))".format(','.join(map(str,ni))) for ni \
+            in new_ignore])) if new_ignore else '')
+      
+      duplicate = self.query(SQL, fetch='one')
 
       # Compare potential duplicates and prompt user for action on each
       try:
@@ -563,23 +565,31 @@ class Database:
     except:
       print "Could not execute: "+SQL
     
-  def output_spectrum(self, spectrum_id, filepath, original=False):
+  def output_spectrum(self, spectrum, filepath, header='', original=False):
     """
-    Prints a file of the spectrum with id **spectrum_id** to an ascii file with specified **filepath**.
+    Prints a file of the given spectrum to an ascii file with specified filepath.
     
     Parameters
     ----------
-    spectrum_id: int
-      The id from the SPECTRA table of the spectrum to print to file.
+    spectrum: int, sequence
+      The id from the SPECTRA table of the [w,f,e] sequence
     filepath: str
       The path of the file to print the data to.
     original: bool
       Return the file in the original uploaded form
+    header: dict
+      A dictionary of metadata to add of update in the header
     
     """
-    # Add option to just copy original file
+    if isinstance(spectrum, int):
+      # Add option to just copy original file
     
-    data = self.query("SELECT * FROM spectra WHERE id={}".format(spectrum_id), fetch='one', fmt='dict')
+      data = self.query("SELECT * FROM spectra WHERE id={}".format(spectrum_id), fetch='one', fmt='dict')
+
+    elif isinstance(spectrum, (list,tuple,np.ndarray)):
+      
+      data = {}
+
     if data:
       fn = '{}{}.txt'.format(filepath, data['filename'] or spectrum_id)
 
@@ -587,10 +597,13 @@ class Database:
       header = np.asarray(data['header'].cards)
       for h in header: h[0] = '# '+h[0]
       if data['header']: ii.write(header, fn, delimiter='\t', format='no_header')
-      
+    
       # Write the data
-      with open(fn, mode='a') as f: ii.write([np.asarray(i, dtype=np.float64) for i in data['spectrum']], f, names=['# wavelength [{}]'.format(data['wavelength_units']),'flux [{}]'.format(data['flux_units']),'unc [{}]'.format(data['flux_units'])], delimiter='\t')
-      
+      with open(fn, mode='a') as f: 
+        ii.write([np.asarray(i, dtype=np.float64) for i in data['spectrum']], f, \
+                 names=['# wavelength [{}]'.format(data['wavelength_units']),'flux [{}]'.format(data['flux_units']),'unc [{}]'.format(data['flux_units'])], \
+                 delimiter='\t')
+    
     else: print "No spectrum found with id {}".format(spectrum_id)
   
   def plot_spectrum(self, spectrum_id, table='spectra', column='spectrum', overplot=False, color='b', norm=False):
@@ -953,6 +966,30 @@ class Database:
     except:
       return SQL, ''
 
+class Spectrum:
+  def __init__(self, data, header='', path=''):
+    """
+    Initialize the Spectrum object
+        
+    Parameters
+    ----------
+    data: sequence 
+      The [w,f,e] spectrum
+    header: sequence (optional)
+      A sequence of the lines of data to include in the header
+    path: str (optional)
+      The absolute path to the original file
+    
+    Returns
+    -------
+    object
+      The Spectrum object
+         
+    """
+    self.data = data
+    self.header = header
+    self.path = path
+    
 # ==============================================================================================================================================
 # ================================= Adapters and converters for special data types =============================================================
 # ==============================================================================================================================================
@@ -1031,12 +1068,6 @@ def convert_spectrum(File):
     
   """
   spectrum, header = '', ''
-  
-  class Spectrum:
-    def __init__(self, data, header, path):
-        self.data = data
-        self.header = header
-        self.path = path
   
   if isinstance(File,str):
     
