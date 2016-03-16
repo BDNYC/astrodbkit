@@ -22,8 +22,8 @@ def create_database(dbpath):
     sources_table = "CREATE TABLE sources (id INTEGER PRIMARY KEY, ra REAL, dec REAL, designation TEXT, publication_id INTEGER, shortname TEXT, names TEXT, comments TEXT)"
     os.system("sqlite3 {} '{}'".format(dbpath,sources_table))
     if os.path.isfile(dbpath):
-      print "\nDatabase created! To load, run\n\ndb = astrodb.Database('{}')\n\nThen run db.modify_table() method to create tables.".format(dbpath)
-  else: print "Please provide a path and file name with a .db file extension, e.g. /Users/<username>/Desktop/test.db"
+      print("\nDatabase created! To load, run\n\ndb = astrodb.Database('{}')\n\nThen run db.modify_table() method to create tables.".format(dbpath))
+  else: print("Please provide a path and file name with a .db file extension, e.g. /Users/<username>/Desktop/test.db")
 
 class Database:
   def __init__(self, dbpath):
@@ -64,7 +64,7 @@ class Database:
       # Make sure the ignore table exists
       self.list("CREATE TABLE IF NOT EXISTS ignore (id INTEGER PRIMARY KEY, id1 INTEGER, id2 INTEGER, tablename TEXT)")
     
-    else: print "Sorry, no such file '{}'".format(dbpath)
+    else: print("Sorry, no such file '{}'".format(dbpath))
 
   def add_data(self, data, table, delimiter='|', bands=''):
     """
@@ -152,7 +152,7 @@ class Database:
             new_records[n]['spectrum'] = relpath
             new_records[n] = _autofill_spec_record(new_rec)
           else: 
-            print 'Error adding the spectrum at {}'.format(new_rec['spectrum'])
+            print('Error adding the spectrum at {}'.format(new_rec['spectrum']))
             del_records.append(n)
         
         # Remove bad records from the table
@@ -170,17 +170,17 @@ class Database:
         self.modify("INSERT INTO {} VALUES({})".format(table, ','.join('?'*len(columns))), new_rec, verbose=False)
         new_records[N]['id'] = rowids[N]
     
-      # Print a table of the new records or bad news
+      # print(a table of the new records or bad news
       if new_records:
         pprint(new_records, names=columns, title="{} new records added to the {} table.".format(len(new_records),table.upper()))
       else: 
-        print 'No new records added to the {} table. Please check your input: {}'.format(table,entry)
+        print('No new records added to the {} table. Please check your input: {}'.format(table,entry))
     
       # Run table clean up
       try: self.clean_up(table)
-      except: print 'Could not run clean_up() method.' 
+      except: print('Could not run clean_up() method.')
     
-    else: print 'Please check your input: {}'.format(entry)
+    else: print('Please check your input: {}'.format(entry))
  
   def clean_up(self, table):
     """
@@ -245,9 +245,9 @@ class Database:
 
     # Finish or abort table clean up
     if command=='abort': 
-      print '\nAborted clean up of {} table.'.format(table.upper())
+      print('\nAborted clean up of {} table.'.format(table.upper()))
       return 'abort'
-    else: print '\nFinished clean up on {} table.'.format(table.upper())
+    else: print('\nFinished clean up on {} table.'.format(table.upper()))
 
   def _compare_records(self, table, duplicate, options=['r','c','k','sql']):
     """
@@ -263,7 +263,7 @@ class Database:
       The allowed options: 'r' for replace, 'c' for complete, 'k' for keep, 'sql' for raw SQL input.
     
     """
-    # Print the old and new records suspectred of being duplicates
+    # print(the old and new records suspectred of being duplicates
     data = self.query("SELECT * FROM {} WHERE id IN ({})".format(table,','.join(map(str,duplicate))), \
                       fmt='table', verbose=True, use_converters=False)
     columns = data.colnames[1:]
@@ -298,7 +298,7 @@ class Database:
             self.modify("UPDATE {} SET {} WHERE id={}".format(table, ','.join(empty_cols), duplicate[0]), tuple(new_vals), verbose=False)
         else: 
           badcols = ','.join([i for i in replace_cols if i not in columns])
-          print "\nInvalid column names for {} table: {}".format(table, badcols)
+          print("\nInvalid column names for {} table: {}".format(table, badcols))
       
       # Complete the old record with any missing data provided in the new record, then delete the new record
       elif replace=='c':
@@ -327,7 +327,7 @@ class Database:
     
     # Prompt again
     else:
-      print "\nInvalid command: {}\nTry again or type 'help' or 'abort'.\n".format(replace)
+      print("\nInvalid command: {}\nTry again or type 'help' or 'abort'.\n".format(replace))
           
   def inventory(self, source_id, fetch=False, fmt='table'):
     """
@@ -368,7 +368,7 @@ class Database:
             data = self.query("SELECT {} FROM {} WHERE {}={}".format(','.join(columns),table,id,source_id), fmt='table')
             
             if not data and table.lower()=='sources':
-              print 'No source with id {}. Try db.search() to search the database for a source_id.'.format(source_id)
+              print('No source with id {}. Try db.search() to search the database for a source_id.'.format(source_id))
             
           except: 
             data = None
@@ -385,7 +385,7 @@ class Database:
         else: pass
     
       except:
-        print 'Could not retrieve data from {} table.'.format(table.upper())
+        print('Could not retrieve data from {} table.'.format(table.upper()))
     
     if fetch: return data_tables
 
@@ -458,7 +458,7 @@ class Database:
                 
         if any([i not in columns for i in conflicted_cols]):
           # Abort table merge if conflicted has new columns not present in master. New columns must be added to the master database first via db.edit_columns().
-          print "\nMerge of {0} table aborted since conflicted copy has columns {1} not present in master.\nAdd new columns to master with astrodb.table() method and try again.\n".format(table.upper(),[i for i in conflicted_cols if i not in columns])
+          print("\nMerge of {0} table aborted since conflicted copy has columns {1} not present in master.\nAdd new columns to master with astrodb.table() method and try again.\n".format(table.upper(),[i for i in conflicted_cols if i not in columns]))
         
         else:
           # Add new columns from master table to conflicted table if necessary
@@ -476,7 +476,7 @@ class Database:
           
           if data:
             
-            # Just print the table differences
+            # Just print(the table differences
             if diff_only:
               pprint(zip(*data)[1:], names=columns, title='New {} records'.format(table.upper()))
             
@@ -491,7 +491,7 @@ class Database:
               self.modify("INSERT INTO {0} ({1}) SELECT {1} FROM Backup_{0}".format(table, ','.join(columns)), verbose=False)
 
               # Create a dictionary of any reassigned ids from merged SOURCES tables and replace applicable source_ids in other tables.
-              print "\nMerging {} tables.\n".format(table.upper())
+              print("\nMerging {} tables.\n".format(table.upper()))
               try: count = self.query("SELECT MAX(id) FROM {}".format(table), fetch='one')[0]+1
               except TypeError: count = 1
               for n,i in enumerate([d[1:] for d in data]):
@@ -517,7 +517,7 @@ class Database:
                 self.modify("DROP TABLE Backup_{0}".format(table), verbose=False)
                 modified_tables.append(table.upper())
           
-          else: print "\n{} tables identical.".format(table.upper())
+          else: print("\n{} tables identical.".format(table.upper()))
       
       # Add data to CHANGELOG table
       if not diff_only:
@@ -527,15 +527,15 @@ class Database:
       
       # Finish up and detach
       if diff_only:
-        print "\nDiff complete. No changes made to either database. Set `diff_only=False' to apply merge."
+        print("\nDiff complete. No changes made to either database. Set `diff_only=False' to apply merge.")
       else:
-        print "\nMerge complete!"
+        print("\nMerge complete!")
         
       con.modify("DETACH DATABASE c", verbose=False)
       self.modify("DETACH DATABASE c", verbose=False)
       con.modify("DETACH DATABASE m", verbose=False)
       self.modify("DETACH DATABASE m", verbose=False)
-    else: print "File '{}' not found!".format(conflicted)
+    else: print("File '{}' not found!".format(conflicted))
 
   def modify(self, SQL, params='', verbose=True):
     """
@@ -556,14 +556,14 @@ class Database:
       self.conn.commit()
       
       if SQL.lower().startswith('select'):
-        print 'Use self.query method for queries.'
+        print('Use self.query method for queries.')
       else:
         self.list(SQL, params)
         self.conn.commit()
         if verbose:
-          print 'Number of records modified: {}'.format(self.list("SELECT changes()").fetchone()[0] or '0')
+          print('Number of records modified: {}'.format(self.list("SELECT changes()").fetchone()[0] or '0'))
     except:
-      print "Could not execute: "+SQL
+      print("Could not execute: "+SQL)
     
   def output_spectrum(self, spectrum, filepath, header={}, original=False):
     """
@@ -574,7 +574,7 @@ class Database:
     spectrum: int, sequence
       The id from the SPECTRA table of the [w,f,e] sequence
     filepath: str
-      The path of the file to print the data to.
+      The path of the file to print(the data to.
     original: bool
       Return the file in the original uploaded form
     header: dict
@@ -608,11 +608,11 @@ class Database:
       with open(fn, mode='a') as f: 
         ii.write([np.asarray(i, dtype=np.float64) for i in data['spectrum'].data], f, names=names, delimiter='\t')   
     
-    else: print "Could not output spectrum: {}".format(spectrum)
+    else: print("Could not output spectrum: {}".format(spectrum))
   
   def plot_spectrum(self, spectrum_id, table='spectra', column='spectrum', overplot=False, color='b', norm=False):
     """
-    Plots spectrum **ID** from SPECTRA table.
+    Plots a spectrum from the given column and table
     
     Parameters
     ----------
@@ -663,18 +663,20 @@ class Database:
             try: e *= C
             except: pass
             
-          except: print 'Could not normalize.'
+          except: print('Could not normalize.')
         
         # Plot the data
         ax.loglog(w, f, c=color, label='spec_id: {}'.format(i['id']))
         X, Y = plt.xlim(), plt.ylim()
         try: ax.fill_between(w, f-e, f+e, color=color, alpha=0.3), ax.set_xlim(X), ax.set_ylim(Y)
-        except: print 'No uncertainty array for spectrum {}'.format(spectrum_id)
+        except: print('No uncertainty array for spectrum {}'.format(spectrum_id))
         plt.ion()
       
-      except: print "Could not plot spectrum {}".format(spectrum_id); plt.close()
+      except: 
+        print("Could not plot spectrum {}".format(spectrum_id))
+        plt.close()
     
-    else: print "No spectrum {} in the SPECTRA table.".format(spectrum_id)
+    else: print("No spectrum {} in the SPECTRA table.".format(spectrum_id))
 
   def query(self, SQL, params='', fmt='array', fetch='all', unpack=False, export='', \
             verbose=False, use_converters=True):
@@ -694,7 +696,7 @@ class Database:
     export: str
       The file path of the ascii file to which the data should be exported
     verbose: bool
-      Print the data also
+      print(the data also
     use_converters: bool
       Apply converters to columns with custom data types
       
@@ -731,16 +733,16 @@ class Database:
           # Unpack the results if necessary (data types are not preserved)
           if unpack: array = np.array(zip(*array))
         
-          # Print on screen
+          # print(on screen
           if verbose: pprint(table)         
         
-          # Print the results to file
+          # print(the results to file
           if export:
             # If .vot or .xml, assume VOTable export with votools
             if export.lower().endswith('.xml') or export.lower().endswith('.vot'): 
               votools.dict_tovot(dictionary, export)
           
-            # Otherwise print as ascii
+            # Otherwise print(as ascii
             else: ii.write(table, export, Writer=ii.FixedWidthTwoLine, fill_values=[('None', '-')])
         
           # Or return the results
@@ -751,10 +753,10 @@ class Database:
         else: return
           
       else:
-        print 'Queries must begin with a SELECT or PRAGMA statement. For database modifications use self.modify() method.'  
+        print('Queries must begin with a SELECT or PRAGMA statement. For database modifications use self.modify() method.')  
     
     except IOError:
-      print 'Could not execute: '+SQL
+      print('Could not execute: '+SQL)
 
   def search(self, criterion, table, columns='', fetch=False):
     """
@@ -788,7 +790,8 @@ class Database:
     columns = columns[np.in1d(columns,all_columns)]
     columns = np.array([c for c in all_columns if c in columns])
     types = np.array([t for c,t in zip(all_columns,types) if c in columns])[np.in1d(columns,all_columns)]
-    for col in badcols: print "'{}' is not a column in the {} table.".format(col,table.upper())
+    for col in badcols: 
+      print("'{}' is not a column in the {} table.".format(col,table.upper()))
             
     # Coordinate search
     if isinstance(criterion,(tuple,list,np.ndarray)):
@@ -800,7 +803,7 @@ class Database:
           +str(criterion[1]+0.01667)
         results = self.query(q, fmt='table')
       except:
-        print "Could not search {} table by coordinates {}. Try again.".format(table.upper(),criterion)
+        print("Could not search {} table by coordinates {}. Try again.".format(table.upper(),criterion))
     
     # Text string search of columns with 'TEXT' data type
     elif isinstance(criterion, (str,unicode)) and any(columns) and 'TEXT' in types:
@@ -809,7 +812,7 @@ class Database:
           +criterion.replace(' ','')+r"%'" for c,t in zip(columns,types[np.in1d(columns,all_columns)]) if t=='TEXT']))
         results = self.query(q, fmt='table')
       except:
-        print "Could not search {} table by string {}. Try again.".format(table.upper(),criterion)
+        print("Could not search {} table by string {}. Try again.".format(table.upper(),criterion))
     
     # Integer search of columns with 'INTEGER' data type
     elif isinstance(criterion, int):
@@ -818,16 +821,16 @@ class Database:
             for c,t in zip(columns,types[np.in1d(columns,all_columns)]) if t=='INTEGER']))
         results = self.query(q, fmt='table')
       except:
-        print "Could not search {} table by id {}. Try again.".format(table.upper(),criterion)        
+        print("Could not search {} table by id {}. Try again.".format(table.upper(),criterion))       
     
     # Problem!
-    else: print "Could not search {} table by '{}'. Try again.".format(table.upper(),criterion)
+    else: print("Could not search {} table by '{}'. Try again.".format(table.upper(),criterion))
     
-    # Print or return the results
+    # print(or return the results
     if results: 
       if fetch: return results
       else: pprint(results, title=table.upper())
-    else: print "No results found for {} in {} the table.".format(criterion,table.upper())
+    else: print("No results found for {} in {} the table.".format(criterion,table.upper()))
 
   def table(self, table, columns, types, constraints='', new_table=False):
     """
@@ -852,17 +855,21 @@ class Database:
     # Make sure there is an integer primary key, unique, not null 'id' column 
     # and the appropriate number of elements in each sequence
     if columns[0]!='id':
-      print "Column 1 must be called 'id'"; goodtogo = False
+      print("Column 1 must be called 'id'")
+      goodtogo = False
     if types[0].upper()!='INTEGER PRIMARY KEY': 
-      print "'id' column type must be 'INTEGER PRIMARY KEY'"; goodtogo = False
+      print("'id' column type must be 'INTEGER PRIMARY KEY'")
+      goodtogo = False
     if constraints:
       if 'UNIQUE' not in constraints[0].upper() and 'NOT NULL' not in constraints[0].upper(): 
-        print "'id' column constraints must be 'UNIQUE NOT NULL'";  goodtogo = False
+        print("'id' column constraints must be 'UNIQUE NOT NULL'")
+        goodtogo = False
     else:
       constraints = ['UNIQUE NOT NULL']+(['']*(len(columns)-1))
     if not len(columns)==len(types)==len(constraints):
-      print "Must provide equal length *columns ({}), *types ({}), and *constraints ({}) sequences."\
-            .format(len(columns),len(types),len(constraints));  goodtogo = False
+      print("Must provide equal length *columns ({}), *types ({}), and *constraints ({}) sequences."\
+            .format(len(columns),len(types),len(constraints)))
+      goodtogo = False
     
     if goodtogo:
       tables = self.query("SELECT name FROM sqlite_master", unpack=True)[0]
@@ -885,12 +892,15 @@ class Database:
     
       # Otherwise the table to be modified doesn't exist or the new table to add already exists, so do nothing
       else:
-        if new_table: print 'Table {} already exists. Set *new_table=False to modify.'.format(table.upper())
-        else: print 'Table {} does not exist. Could not modify. Set *new_table=True to add a new table.'.format(table.upper())
+        if new_table: 
+          print('Table {} already exists. Set *new_table=False to modify.'.format(table.upper()))
+        else: 
+          print('Table {} does not exist. Could not modify. Set *new_table=True to add a new table.'.format(table.upper()))
         
-    else: print 'The {} table has not been {}. Please make sure your table columns, \
-                types, and constraints are formatted properly.'.format(table.upper(),\
-                'created' if new_table else 'modified')
+    else: 
+      print('The {} table has not been {}. Please make sure your table columns, \
+             types, and constraints are formatted properly.'.format(table.upper(),\
+             'created' if new_table else 'modified'))
 
   def _explicit_query(self, SQL, use_converters=True):
     """
@@ -999,8 +1009,13 @@ class Spectrum:
         new_header[k.replace('.','_').replace('#','')] = v
     elif isinstance(header,pf.header.Header):
       new_header = header
+    elif isinstance(header,list):
+      new_header = pf.Header()
+      for line in header:
+        k, v = line.split('=')[0], '\\'.join(line.split('=')[1:])
+        new_header[k.replace('\\','').replace('.','_').replace('#','').strip()] = v
     elif header:
-      print('Header data must be a dictionary.')
+      print('Header is {}. Must be a fits header, list, or dictionary.'.format(type(header)))
       new_header = ''
     else:
       new_header = ''
@@ -1136,7 +1151,9 @@ def convert_spectrum(File):
         except: pass
       except: pass
 
-  if spectrum=='': print 'Could not retrieve spectrum at {}.'.format(File); return File
+  if spectrum=='': 
+    print('Could not retrieve spectrum at {}.'.format(File))
+    return File
   else: 
     spectrum = Spectrum(spectrum, header, File)
     return spectrum
@@ -1176,7 +1193,7 @@ def __create_waxis(fitsHeader, lenData, fileName, wlog=False):
     else:
         wAxis = None
         if verb:
-            print 'Could not re-create wavelength axis for ' + fileName + '.'
+            print('Could not re-create wavelength axis for ' + fileName + '.')
     
     return wAxis
 
@@ -1244,7 +1261,7 @@ def __get_spec(fitsData, fitsHeader, fileName):
     # No interpretation known for fits file data sets
         validData = None
         if verb:
-            print 'Unable to interpret data in ' + fileName + '.'
+            print('Unable to interpret data in ' + fileName + '.')
         return validData
     else:
         if waveIdx is not None:
@@ -1293,7 +1310,7 @@ def pprint(data, names='', title=''):
   Parameters
   ----------
   data: (sequence, dict, table)
-    The data to print in the table
+    The data to print(in the table
   names: sequence
     The column names
   title: str (optional)
@@ -1315,8 +1332,8 @@ def pprint(data, names='', title=''):
   for old,new in zip(*[pdata.colnames,[i.replace('wavelength','wav').replace('publication','pub').replace('instrument','inst').replace('telescope','scope') for i in pdata.colnames]]): 
     pdata.rename_column(old,new) if new!=old else None
   
-  # Print it!
-  if title: print '\n'+title
+  # print(it!
+  if title: print('\n'+title)
   ii.write(pdata, sys.stdout, Writer=ii.FixedWidthTwoLine, formats={'comments': '%.15s', 'obs_date': '%.10s', 'names': '%.20s', 'description': '%.50s'}, fill_values=[('None', '-')])
 
 def clean_header(header):
@@ -1330,7 +1347,7 @@ def clean_header(header):
   return header
 
 def _help():
-  print ' '
+  print(' ')
   pprint(np.asarray([['<column name>','Display full record entry for that column without taking action'], \
                    ['k','Keeps both records and assigns second one new id if necessary'], \
                    ['r','Replaces all columns of first record with second record values'], \
@@ -1367,6 +1384,8 @@ def _autofill_spec_record(record):
     The spectrum table row with possible new rows inserted
   """
   try:
+    record['filename'] = os.path.basename(record['spectrum'])
+    
     if record['spectrum'].endswith('.fits'):
       header = pf.getheader(record['spectrum'])
 
