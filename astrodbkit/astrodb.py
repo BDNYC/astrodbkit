@@ -271,13 +271,18 @@ class Database:
 
     # Prompt the user for action
     replace = raw_input("\nKeep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(duplicate[0])).lower()
-    while replace in columns or replace=='help':
-      if replace in columns: pprint(np.asarray([[i for idx,i in enumerate(old) if idx in [0,columns.index(replace)]],\
-                                                [i for idx,i in enumerate(new) if idx in [0,columns.index(replace)]]]), \
-                                                names=['id',replace])    
-      elif replace=='help': _help()
-      replace = raw_input("\nKeep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(duplicate[0]))
     replace = replace.strip()
+
+    while replace in columns or replace=='help':
+      if replace in columns: 
+        pprint(np.asarray([[i for idx,i in enumerate(old) if idx in [0,columns.index(replace)]],\
+                           [i for idx,i in enumerate(new) if idx in [0,columns.index(replace)]]]),\
+                           names=['id',replace])    
+      
+      elif replace=='help':
+        _help()
+
+      replace = raw_input("\nKeep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(duplicate[0])).lower()
 
     if replace and replace.split()[0] in options:
       
@@ -584,12 +589,14 @@ class Database:
     # If an integer is supplied, get the spectrum from the SPECTRA table
     if isinstance(spectrum, int):
       data = self.query("SELECT * FROM spectra WHERE id={}".format(spectrum), fetch='one', fmt='dict')
-      data['header'] = list(map(list, data['spectrum'].header.cards)) + [[k,v,''] for k,v in header.items()]
+      try: data['header'] = list(map(list, data['spectrum'].header.cards)) + [[k,v,''] for k,v in header.items()]
+      except: data['header'] = ''
     
     # If a [w,f,e] sequence is supplied, make it into a Spectrum object
     elif isinstance(spectrum, (list,tuple,np.ndarray)):
       data = {'spectrum':Spectrum(spectrum, header=header), 'wavelength_units':'', 'flux_units':''}
-      data['header'] = list(map(list, data['spectrum'].header.cards))
+      try: data['header'] = list(map(list, data['spectrum'].header.cards))
+      except: data['header'] = ''
 
     if data:
       fn = filepath if filepath.endswith('.txt') else filepath+'spectrum.txt'
@@ -757,6 +764,18 @@ class Database:
     
     except IOError:
       print('Could not execute: '+SQL)
+      
+  def schema(self, table):
+    """
+    Print the table schema
+    
+    Parameters
+    ----------
+    table: str
+      The table name
+      
+    """
+    pprint(self.query("PRAGMA table_info({})".format(table), fmt='table'))
 
   def search(self, criterion, table, columns='', fetch=False):
     """
@@ -1142,7 +1161,7 @@ def convert_spectrum(File):
     if File.endswith('.txt'): 
       try: 
         spectrum = ii.read(File)
-        spectrum = np.array([np.asarray(spectrum.columns[n]) for n in [0,1,2]])
+        spectrum = np.array([np.asarray(spectrum.columns[n]) for n in range(len(spectrum.columns))])
         try: 
           txt, header = open(File), []
           for i in txt: 
@@ -1303,7 +1322,7 @@ sqlite3.register_adapter(np.ndarray, adapt_array)
 sqlite3.register_converter("ARRAY", convert_array)
 sqlite3.register_converter("SPECTRUM", convert_spectrum)
 
-def pprint(data, names='', title=''):
+def pprint(data, names='', title='', formats={}):
   """
   Prints tables with a little bit 'o formatting
   
@@ -1315,6 +1334,8 @@ def pprint(data, names='', title=''):
     The column names
   title: str (optional)
     The title of the table
+  formats: dict
+    A dictionary of column:format values
     
   """
   # Make the data into a table if it isn't already
@@ -1332,9 +1353,12 @@ def pprint(data, names='', title=''):
   for old,new in zip(*[pdata.colnames,[i.replace('wavelength','wav').replace('publication','pub').replace('instrument','inst').replace('telescope','scope') for i in pdata.colnames]]): 
     pdata.rename_column(old,new) if new!=old else None
   
-  # print(it!
+  # Format the columns
+  formats.update({'comments': '%.15s', 'obs_date': '%.10s', 'names': '%.20s', 'description': '%.50s'})
+  
+  # print it!
   if title: print('\n'+title)
-  ii.write(pdata, sys.stdout, Writer=ii.FixedWidthTwoLine, formats={'comments': '%.15s', 'obs_date': '%.10s', 'names': '%.20s', 'description': '%.50s'}, fill_values=[('None', '-')])
+  ii.write(pdata, sys.stdout, Writer=ii.FixedWidthTwoLine, formats=formats, fill_values=[('None', '-')])
 
 def clean_header(header):
   try:
@@ -1348,15 +1372,18 @@ def clean_header(header):
 
 def _help():
   print(' ')
-  pprint(np.asarray([['<column name>','Display full record entry for that column without taking action'], \
-                   ['k','Keeps both records and assigns second one new id if necessary'], \
-                   ['r','Replaces all columns of first record with second record values'], \
-                   ['r <column name> <column name>...','Replaces specified columns of first record with second record values'], \
-                   ['c','Complete empty columns of first record with second record values where possible'], \
+  command = '{:<33s}'.format('Command')
+  result = '{:79s}'.format('Result')
+  pprint(np.asarray([['<column name>','Display full record entry for that column without taking action'],\
+                   ['k','Keeps both records and assigns second one new id if necessary'],\
+                   ['r','Replaces all columns of first record with second record values'],\
+                   ['r <column name> <column name> ...','Replaces specified columns of first record with second record values'],\
+                   ['c','Complete empty columns of first record with second record values where possible'],\
                    ['[Enter]','Keep first record and delete second'],\
-                   ['sql <SQLite query>','Execute arbitrary raw SQLite command.']
-                   ['abort','Abort merge of current table, undo all changes, and proceed to next table']]), \
-                   names=['Command','Result'])
+                   ['sql <SQLite query>','Execute arbitrary raw SQLite command'],\
+                   ['abort','Abort merge of current table, undo all changes, and proceed to next table']]),\
+                   names=[command,result], \
+                   formats={command:'%-33s', result:'%-79s'})
 
 def scrub(data, units=False):
   """
