@@ -15,6 +15,6 @@ script:
 
 matrix:
     allow_failures:
-        - TRAVIS_PYTHON_VERSION=3.3
-        - TRAVIS_PYTHON_VERSION=3.4
-        - TRAVIS_PYTHON_VERSION=3.5
+        - env: TRAVIS_PYTHON_VERSION=3.3
+        - env: TRAVIS_PYTHON_VERSION=3.4
+        - env: TRAVIS_PYTHON_VERSION=3.5
