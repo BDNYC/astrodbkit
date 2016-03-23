@@ -9,7 +9,6 @@ python:
 install:
     - pip install astropy
     - pip install matplotlib
-    - python 
 
 script:
     - py.test
