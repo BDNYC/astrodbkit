@@ -1,2 +1,2 @@
 from pkg_resources import get_distribution
-__version__ = get_distribution('astrodbkit').version
+__version__ = '0.3.0.post6'
