@@ -26,22 +26,20 @@ def create_database(dbpath):
   else: print("Please provide a path and file name with a .db file extension, e.g. /Users/<username>/Desktop/test.db")
 
 class Database:
+  """
+  Initialize the database.
+  
+  Parameters
+  ----------
+  dbpath: str 
+    The path to the database file. 
+  
+  Returns
+  -------
+  object
+    The database object
+  """
   def __init__(self, dbpath):
-    """
-    Initialize the database.
-    
-    Parameters
-    ----------
-    dbpath: str 
-      The path to the database file. 
-    
-    Returns
-    -------
-    object
-      The database object
-         
-    """
-    
     if os.path.isfile(dbpath):
     
       # Create connection
