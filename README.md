@@ -2,7 +2,7 @@
 
 ## Installation
 
-To install, just do:
+To install:
 
 ```pip install astrodbkit```
 
@@ -19,7 +19,7 @@ db = astrodb.Database(dbpath)
 
 ## Need a database?
 
-To use the BDNYC Database, download the latest data release from [the BDNYCdb repo on Github](https://github.com/BDNYC/BDNYCdb.git).
+To use the BDNYC Database of brown dwarf data, download the latest data release from [the BDNYCdb repo on Github](https://github.com/BDNYC/BDNYCdb.git).
 
 ## Enjoy!
 

@@ -11,9 +11,11 @@ except ImportError:
 from codecs import open
 from os import path
 
+from astrodbkit import __version__
+
 setup(
     name='astrodbkit',
-    version='0.3.0.post6',
+    version=__version__,
     description='Astronomy database management using SQL and Python',
     url='https://github.com/BDNYC/astrodbkit.git',
     author='Joe Filippazzo',
