@@ -640,8 +640,10 @@ class Database:
     i = self.query("SELECT * FROM {} WHERE id={}".format(table,spectrum_id), fetch='one', fmt='dict')
     if i:
       try:
-        spec = i[column]
-        w, f, e = scrub(spec.data, units=False)
+        spec = scrub(i[column].data, units=False)
+        w, f = spec[:2]
+        try: e = spec[2]
+        except: e = ''
         
         # Draw the axes and add the metadata
         if not overplot: 
@@ -679,7 +681,7 @@ class Database:
         except: print('No uncertainty array for spectrum {}'.format(spectrum_id))
         plt.ion()
       
-      except: 
+      except IOError: 
         print("Could not plot spectrum {}".format(spectrum_id))
         plt.close()
     
@@ -1031,8 +1033,11 @@ class Spectrum:
     elif isinstance(header,list):
       new_header = pf.Header()
       for line in header:
-        k, v = line.split('=')[0], '\\'.join(line.split('=')[1:])
-        new_header[k.replace('\\','').replace('.','_').replace('#','').strip()] = v
+        try:
+          k, v = line.split('=')[0], '\\'.join(line.split('=')[1:])
+          new_header[k.replace('\\','').replace('.','_').replace('#','').strip()] = v
+        except:
+          pass
     elif header:
       print('Header is {}. Must be a fits header, list, or dictionary.'.format(type(header)))
       new_header = ''
