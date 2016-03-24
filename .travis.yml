@@ -23,15 +23,15 @@ env:
         # Try all python versions with the latest numpy
         - SETUP_CMD='py.test'
 
+matrix:
+    allow_failures:
+        - python: 3.3
+        - python: 3.4
+        - python: 3.5
+
 install:
     - git clone git://github.com/astropy/ci-helpers.git
     - source ci-helpers/travis/setup_conda_$TRAVIS_OS_NAME.sh
 
 script:
     - $SETUP_CMD
-
-matrix:
-    allow_failures:
-        - python: 3.3
-        - python: 3.4
-        - python: 3.5
