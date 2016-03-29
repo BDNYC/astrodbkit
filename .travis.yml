@@ -1,20 +1,37 @@
 language: python
 
 python:
-    - '2.7'
-    - '3.3'
-    - '3.4'
-    - '3.5'
+    - 2.7
+    - 3.3
+    - 3.4
+    - 3.5
 
-install:
-    - pip install astropy
-    - pip install matplotlib
-
-script:
-    - py.test
+env:
+    global:
+        # The following versions are the 'default' for tests, unless
+        # overidden underneath. They are defined here in order to save having
+        # to repeat them for all configurations.
+        - NUMPY_VERSION=stable
+        - ASTROPY_VERSION=stable
+        # For this package-template, we include examples of Cython modules,
+        # so Cython is required for testing. If your package does not include
+        # Cython code, you can set CONDA_DEPENDENCIES=''
+        - CONDA_DEPENDENCIES='matplotlib'
+    matrix:
+        # Make sure that egg_info works without dependencies
+        # - SETUP_CMD='egg_info'
+        # Try all python versions with the latest numpy
+        - SETUP_CMD='py.test'
 
 matrix:
     allow_failures:
         - python: 3.3
         - python: 3.4
         - python: 3.5
+
+install:
+    - git clone git://github.com/astropy/ci-helpers.git
+    - source ci-helpers/travis/setup_conda_$TRAVIS_OS_NAME.sh
+
+script:
+    - $SETUP_CMD

@@ -41,7 +41,7 @@ def table_add(tab, data, col):
 
         x.append(temp)
 
-    print 'Adding column', col
+    print('Adding column {}'.format(col))
     tab.add_column(Column(x, name=col))
 
 def dict_tovot(tabdata, tabname='votable.xml', phot=False, binary=True):
@@ -84,7 +84,8 @@ def dict_tovot(tabdata, tabname='votable.xml', phot=False, binary=True):
         for i in range(len(tabdata)):
             tmpcol = tabdata[i].keys()
             for elem in tmpcol:
-                if elem not in colnames: colnames.append(elem)
+                if elem not in colnames:
+                    colnames.append(elem)
 
         # No need for band column any more
         try:
@@ -93,18 +94,20 @@ def dict_tovot(tabdata, tabname='votable.xml', phot=False, binary=True):
             pass
 
     # Run through all the columns and create them
-    for elem in colnames: table_add(t, tabdata, elem)
+    for elem in colnames:
+        table_add(t, tabdata, elem)
 
     # Output to a file
-    print 'Creating table...'
+    print('Creating table...')
     votable = from_table(t)
 
     # Required in some cases (ie, for lots of text columns)
-    if binary: votable.set_all_tables_format('binary')
+    if binary:
+        votable.set_all_tables_format('binary')
 
     votable.to_xml(tabname)
 
-    print 'Table created:', tabname
+    print('Table created: {}'.format(tabname))
 
 
 def photaddline(tab, sourceid):
