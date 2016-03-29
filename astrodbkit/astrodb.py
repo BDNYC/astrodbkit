@@ -329,7 +329,7 @@ class Database:
 
         while replace in columns or replace == 'help':
             if replace in columns:
-                pprint(np.asarray([[i    idx, i in enumerate(old) if idx in [0, columns.index(replace)]], \
+                pprint(np.asarray([[i for idx, i in enumerate(old) if idx in [0, columns.index(replace)]], \
                                    [i for idx, i in enumerate(new) if idx in [0, columns.index(replace)]]]), \
                        names=['id', replace])
 
