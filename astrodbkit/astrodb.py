@@ -575,9 +575,9 @@ class Database:
     Parameters
     ----------
     spectrum: int, sequence
-      The id from the SPECTRA table of the [w,f,e] sequence
+      The id from the SPECTRA table or a [w,f,e] sequence
     filepath: str
-      The path of the file to print(the data to.
+      The path of the file to print the data to.
     original: bool
       Return the file in the original uploaded form
     header: dict
@@ -608,7 +608,11 @@ class Database:
     
       # Write the data
       names = ['# wavelength [{}]'.format(data['wavelength_units']), 'flux [{}]'.format(data['flux_units'])] 
-      if len(data['spectrum'].data)==3: names += ['unc [{}]'.format(data['flux_units'])]
+      if len(data['spectrum'].data)==3: 
+        if type(data['spectrum'].data[2]) in [np.ndarray,list]:
+          names += ['unc [{}]'.format(data['flux_units'])]
+        else:
+          data['spectrum'].data = data['spectrum'].data[:2]
       
       with open(fn, mode='a') as f: 
         ii.write([np.asarray(i, dtype=np.float64) for i in data['spectrum'].data], f, names=names, delimiter='\t')   
