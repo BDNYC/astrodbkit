@@ -1285,7 +1285,7 @@ def convert_spectrum(File):
             try:
                 # Get the data
                 spectrum, header = pf.getdata(File, cache=True, header=True)
-
+                
                 # Check the key type
                 KEY_TYPE = ['CTYPE1']
                 setType = set(KEY_TYPE).intersection(set(header.keys()))
@@ -1299,12 +1299,14 @@ def convert_spectrum(File):
                 spectrum = __get_spec(spectrum, header, File)
 
                 # Generate wl axis when needed
-                if not spectrum[0]: spectrum[0] = __create_waxis(header, len(spectrum[1]), File)
+                if not isinstance(spectrum[0],np.ndarray): 
+                    spectrum[0] = __create_waxis(header, len(spectrum[1]), File)
 
                 # If no wl axis generated, then clear out all retrieved data for object
-                if not spectrum[0]: spectrum = None
+                if not isinstance(spectrum[0],np.ndarray): 
+                    spectrum = None
 
-            except:
+            except IOError:
                 # Check if the FITS file is just Numpy arrays
                 try:
                     spectrum, header = pf.getdata(File, cache=True, header=True)
