@@ -1537,8 +1537,8 @@ def pprint(data, names='', title='', formats={}):
         print(' '.join(key.rjust(str_lengths[key]) for key in pdata.keys()))
         print(' '.join('-' * str_lengths[key] for key in pdata.keys()))
         for i in range(len(pdata)):
-            print(' '.join(str(pdata[key].data[0]).decode('utf-8')[:max_length].rjust(str_lengths[key])
-                           if pdata[key].data[0] is not None else '-'.rjust(str_lengths[key])
+            print(' '.join(str(pdata[key].data[i]).decode('utf-8')[:max_length].rjust(str_lengths[key])
+                           if pdata[key].data[i] is not None else '-'.rjust(str_lengths[key])
                            for key in pdata.keys()))
 
 
