@@ -1512,9 +1512,8 @@ def pprint(data, names='', title='', formats={}):
 
     # Shorten the column names for slimmer data
     for old, new in zip(*[pdata.colnames, [
-        i.replace('wavelength', 'wav').replace('publication', 'pub').replace('instrument', 'inst').replace('telescope',
-                                                                                                           'scope') for
-        i in pdata.colnames]]):
+        i.replace('wavelength', 'wav').replace('publication', 'pub').replace('instrument', 'inst')\
+        .replace('telescope','scope') for i in pdata.colnames]]):
         pdata.rename_column(old, new) if new != old else None
 
     # Format the columns
@@ -1533,11 +1532,9 @@ def pprint(data, names='', title='', formats={}):
             str_lengths[key] = min(max(lengths), max_length)
         print(' '.join(key.rjust(str_lengths[key]) for key in pdata.keys()))
         print(' '.join('-' * str_lengths[key] for key in pdata.keys()))
-        for i in range(len(pdata)):
-            print(' '.join(str(pdata[key].data[0]).decode('utf-8')[:max_length].rjust(str_lengths[key])
-                           if pdata[key].data[0] is not None else '-'.rjust(str_lengths[key])
-                           for key in pdata.keys()))
-
+        for i in pdata:
+            print(' '.join([str(i[key]).decode('utf-8')[:max_length].rjust(str_lengths[key])
+                           if i[key] else '-'.rjust(str_lengths[key]) for key in pdata.keys()]))                          
 
 def clean_header(header):
     try:
