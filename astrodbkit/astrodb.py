@@ -1522,7 +1522,21 @@ def pprint(data, names='', title='', formats={}):
 
     # print it!
     if title: print('\n' + title)
-    ii.write(pdata, sys.stdout, Writer=ii.FixedWidthTwoLine, formats=formats, fill_values=[('None', '-')])
+    try:
+        ii.write(pdata, sys.stdout, Writer=ii.FixedWidthTwoLine, formats=formats, fill_values=[('None', '-')])
+    except UnicodeDecodeError:  # Fix for Unicode characters. Print out in close approximation to ii.write()
+        max_length = 50
+        str_lengths = dict()
+        for key in pdata.keys():
+            lengths = map(lambda x: len(str(x).decode('utf-8')), pdata[key].data)
+            lengths.append(len(key))
+            str_lengths[key] = min(max(lengths), max_length)
+        print(' '.join(key.rjust(str_lengths[key]) for key in pdata.keys()))
+        print(' '.join('-' * str_lengths[key] for key in pdata.keys()))
+        for i in range(len(pdata)):
+            print(' '.join(str(pdata[key].data[0]).decode('utf-8')[:max_length].rjust(str_lengths[key])
+                           if pdata[key].data[0] is not None else '-'.rjust(str_lengths[key])
+                           for key in pdata.keys()))
 
 
 def clean_header(header):
