@@ -891,14 +891,14 @@ class Database:
 
     def schema(self, table):
         """
-    Print the table schema
+        Print the table schema
 
-    Parameters
-    ----------
-    table: str
-      The table name
+        Parameters
+        ----------
+        table: str
+          The table name
 
-    """
+        """
         pprint(self.query("PRAGMA table_info({})".format(table), fmt='table'))
 
     def search(self, criterion, table, columns='', fetch=False):
@@ -911,8 +911,8 @@ class Database:
 
         Parameters
         ----------
-        criterion: (str, int, tuple)
-            The text, integer, or coordinate tuple to search the table with.
+        criterion: (str, int, sequence, tuple)
+            The text, integer, coordinate tuple, or sequence thereof to search the table with.
         table: str
             The name of the table to search
         columns: sequence
@@ -952,10 +952,8 @@ class Database:
         elif isinstance(criterion, (str, unicode)) and any(columns) and 'TEXT' in types:
             try:
                 q = "SELECT * FROM {} WHERE {}".format(table, ' OR '.join([r"REPLACE(" + c + r",' ','') like '%" \
-                                                                           + criterion.replace(' ', '') + r"%'" for c, t
-                                                                           in zip(columns,
-                                                                                  types[np.in1d(columns, all_columns)])
-                                                                           if t == 'TEXT']))
+                     + criterion.replace(' ', '') + r"%'" for c, t in zip(columns,types[np.in1d(columns, all_columns)]) \
+                     if t == 'TEXT']))
                 results = self.query(q, fmt='table')
             except:
                 print("Could not search {} table by string {}. Try again.".format(table.upper(), criterion))
@@ -964,8 +962,7 @@ class Database:
         elif isinstance(criterion, int):
             try:
                 q = "SELECT * FROM {} WHERE {}".format(table, ' OR '.join(['{}={}'.format(c, criterion) \
-                                                                           for c, t in zip(columns, types[
-                        np.in1d(columns, all_columns)]) if t == 'INTEGER']))
+                     for c, t in zip(columns, types[np.in1d(columns, all_columns)]) if t == 'INTEGER']))
                 results = self.query(q, fmt='table')
             except:
                 print("Could not search {} table by id {}. Try again.".format(table.upper(), criterion))
