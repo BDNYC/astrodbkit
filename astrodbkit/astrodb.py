@@ -921,8 +921,6 @@ class Database:
                 Return the results of the query as an Astropy table
 
         """
-        results = ''
-
         # Get list of columns to search and format properly
         all_columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
         columns = columns or all_columns
@@ -971,14 +969,59 @@ class Database:
         else:
             print("Could not search {} table by '{}'. Try again.".format(table.upper(), criterion))
 
-        # print(or return the results
-        if results:
-            if fetch:
-                return results
-            else:
-                pprint(results, title=table.upper())
+        # Print or return the results
+        if fetch:
+            return results or at.Table(names=columns, dtype=[type_dict[t] for t in types], masked=True)
         else:
-            print("No results found for {} in {} the table.".format(criterion, table.upper()))
+            if results: 
+                pprint(results, title=table.upper())
+            else:
+                print("No results found for {} in {} the table.".format(criterion, table.upper()))
+
+    def lookup(self, criteria, table, columns=''):
+        """
+        Returns a table of records from *table* the same length as *criteria*
+        with the best match for each element.
+        
+        Parameters
+        ----------
+        criteria: sequence 
+            The search criteria
+        columns: sequence
+            The column name in the sources table to search
+        
+        Returns
+        -------
+        results: sequence
+            A sequence the same length as objlist with source_ids that correspond to successful matches
+        """
+        results, colmasks = [], []
+        
+        # Iterate through the list, trying to match objects
+        for n,criterion in enumerate(criteria):
+            records = self.search(criterion, table, columns=columns, fetch=True)
+                
+            # If multiple matches, take the first but notify the user of the other matches
+            if len(records)>1:
+                print("'{}' matched to {} other record{}.".format(criterion, len(records)-1, \
+                      's' if len(records)-1>1 else ''))
+            
+            # If no matches, make an empty row
+            if len(records)==0:
+                records.add_row(np.asarray(np.zeros(len(records.colnames))).T)
+                colmasks.append([True]*len(records.colnames))
+            else:
+                colmasks.append([False]*len(records.colnames))
+            
+            results.append(records[0])
+        
+        table = at.Table(rows=results, names=results[0].colnames, masked=True)
+        
+        for col,msk in zip(records.colnames,np.asarray(colmasks).T): 
+            table[col].mask = msk
+        
+        return table
+                
 
     def table(self, table, columns, types, constraints='', new_table=False):
         """
