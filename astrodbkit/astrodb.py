@@ -1402,7 +1402,7 @@ def convert_spectrum(File):
         return spectrum
 
 
-def __create_waxis(fitsHeader, lenData, fileName, wlog=False):
+def __create_waxis(fitsHeader, lenData, fileName, wlog=False, verb=True):
     # Define key names in
     KEY_MIN = ['COEFF0', 'CRVAL1']  # Min wl
     KEY_DELT = ['COEFF1', 'CDELT1', 'CD1_1']  # Delta of wl
@@ -1442,7 +1442,7 @@ def __create_waxis(fitsHeader, lenData, fileName, wlog=False):
     return wAxis
 
 
-def __get_spec(fitsData, fitsHeader, fileName):
+def __get_spec(fitsData, fitsHeader, fileName, verb=True):
     validData = [None] * 3
 
     # Identify number of data sets in fits file
