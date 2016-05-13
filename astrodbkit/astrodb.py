@@ -264,7 +264,7 @@ class Database:
 
         while any(duplicate):
             # Pull out duplicates one by one
-            if table.lower() in ['sources', 'publications']:
+            if 'source_id' not in columns:  # Check if there is a source_id in the columns
                 SQL = "SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.id=t2.id WHERE {1}{2}{3}" \
                     .format(table,
                             ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]),
