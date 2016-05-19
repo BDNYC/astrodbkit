@@ -264,14 +264,33 @@ class Database:
 
         while any(duplicate):
             # Pull out duplicates one by one
-            SQL = "SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.source_id=t2.source_id WHERE t1.id!=t2.id AND {1}{2}{3}" \
-                .format(table, ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]), (' AND ' \
-                                                                                             + ' AND '.join(
-                    ["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))".format(','.join(map(str, [id1, id2]))) for id1, id2 \
-                     in zip(ignore['id1'], ignore['id2'])])) if any(ignore) else '', (' AND ' \
-                                                                                      + ' AND '.join(
-                    ["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))".format(','.join(map(str, ni))) for ni \
-                     in new_ignore])) if new_ignore else '')
+            if 'source_id' not in columns:  # Check if there is a source_id in the columns
+                SQL = "SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.id=t2.id WHERE {1}{2}{3}" \
+                    .format(table,
+                            ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]),
+                            (' AND ' + ' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))"
+                                                    .format(','.join(map(str, [id1, id2]))) for id1, id2
+                                                     in zip(ignore['id1'], ignore['id2'])]))
+                            if any(ignore) else '',
+                            (' AND ' + ' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))"
+                                                    .format(','.join(map(str, ni))) for ni in new_ignore]))
+                            if new_ignore else '')
+            else:
+                SQL = "SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.source_id=t2.source_id " \
+                      "WHERE t1.id!=t2.id AND {1}{2}{3}" \
+                    .format(table,
+                            ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]),
+                            (' AND ' + ' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))"
+                                                    .format(','.join(map(str, [id1, id2]))) for id1, id2
+                                                     in zip(ignore['id1'], ignore['id2'])]))
+                            if any(ignore) else '',
+                            (' AND ' + ' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))"
+                                                    .format(','.join(map(str, ni))) for ni in new_ignore]))
+                            if new_ignore else '')
+
+            # Clean up empty WHERE at end if it's present (eg, for empty req_keys, ignore, and new_ignore)
+            if SQL[-6:] == 'WHERE ':
+                SQL = SQL[:-6]
 
             duplicate = self.query(SQL, fetch='one')
 
@@ -1383,7 +1402,7 @@ def convert_spectrum(File):
         return spectrum
 
 
-def __create_waxis(fitsHeader, lenData, fileName, wlog=False):
+def __create_waxis(fitsHeader, lenData, fileName, wlog=False, verb=True):
     # Define key names in
     KEY_MIN = ['COEFF0', 'CRVAL1']  # Min wl
     KEY_DELT = ['COEFF1', 'CDELT1', 'CD1_1']  # Delta of wl
@@ -1423,7 +1442,7 @@ def __create_waxis(fitsHeader, lenData, fileName, wlog=False):
     return wAxis
 
 
-def __get_spec(fitsData, fitsHeader, fileName):
+def __get_spec(fitsData, fitsHeader, fileName, verb=True):
     validData = [None] * 3
 
     # Identify number of data sets in fits file
@@ -1584,7 +1603,7 @@ def pprint(data, names='', title='', formats={}):
         print(' '.join('-' * str_lengths[key] for key in pdata.keys()))
         for i in pdata:
             print(' '.join([str(i[key]).decode('utf-8')[:max_length].rjust(str_lengths[key])
-                           if i[key] else '-'.rjust(str_lengths[key]) for key in pdata.keys()]))                          
+                           if i[key] else '-'.rjust(str_lengths[key]) for key in pdata.keys()]))
 
 def clean_header(header):
     try:
