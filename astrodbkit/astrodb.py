@@ -264,14 +264,33 @@ class Database:
 
         while any(duplicate):
             # Pull out duplicates one by one
-            SQL = "SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.source_id=t2.source_id WHERE t1.id!=t2.id AND {1}{2}{3}" \
-                .format(table, ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]), (' AND ' \
-                                                                                             + ' AND '.join(
-                    ["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))".format(','.join(map(str, [id1, id2]))) for id1, id2 \
-                     in zip(ignore['id1'], ignore['id2'])])) if any(ignore) else '', (' AND ' \
-                                                                                      + ' AND '.join(
-                    ["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))".format(','.join(map(str, ni))) for ni \
-                     in new_ignore])) if new_ignore else '')
+            if 'source_id' not in columns:  # Check if there is a source_id in the columns
+                SQL = "SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.id=t2.id WHERE {1}{2}{3}" \
+                    .format(table,
+                            ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]),
+                            (' AND ' + ' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))"
+                                                    .format(','.join(map(str, [id1, id2]))) for id1, id2
+                                                     in zip(ignore['id1'], ignore['id2'])]))
+                            if any(ignore) else '',
+                            (' AND ' + ' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))"
+                                                    .format(','.join(map(str, ni))) for ni in new_ignore]))
+                            if new_ignore else '')
+            else:
+                SQL = "SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.source_id=t2.source_id " \
+                      "WHERE t1.id!=t2.id AND {1}{2}{3}" \
+                    .format(table,
+                            ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]),
+                            (' AND ' + ' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))"
+                                                    .format(','.join(map(str, [id1, id2]))) for id1, id2
+                                                     in zip(ignore['id1'], ignore['id2'])]))
+                            if any(ignore) else '',
+                            (' AND ' + ' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))"
+                                                    .format(','.join(map(str, ni))) for ni in new_ignore]))
+                            if new_ignore else '')
+
+            # Clean up empty WHERE at end if it's present (eg, for empty req_keys, ignore, and new_ignore)
+            if SQL[-6:] == 'WHERE ':
+                SQL = SQL[:-6]
 
             duplicate = self.query(SQL, fetch='one')
 
@@ -482,7 +501,8 @@ class Database:
         Returns
         -------
         results: sequence
-            A sequence the same length as objlist with source_ids that correspond to successful matches
+            A sequence the same length as objlist with source_ids that correspond 
+            to successful matches and blanks where no matches could be made
         """
         results, colmasks = [], []
         
@@ -809,12 +829,11 @@ class Database:
                     fig, ax = plt.subplots()
                     plt.rc('text', usetex=False)
                     ax.set_yscale('log', nonposy='clip')
-                    plt.title('source_id = {}'.format(i['source_id']))
                     plt.figtext(0.15, 0.88, '\n'.join(['{}: {}'.format(k, v) for k, v in i.items() if k != column]), \
                                 verticalalignment='top')
                     try:
-                        ax.set_xlabel(r'$\lambda$ [{}]'.format(i['wavelength_units']))
-                        ax.set_ylabel(r'$F_\lambda$ [{}]'.format(i['flux_units']))
+                        ax.set_xlabel(r'$\lambda$ [{}]'.format(i.get('wavelength_units')))
+                        ax.set_ylabel(r'$F_\lambda$ [{}]'.format(i.get('flux_units')))
                     except:
                         pass
                     ax.legend(loc=8, frameon=False)
@@ -1076,6 +1095,7 @@ class Database:
             if table in tables and not new_table:
 
                 # Rename the old table and create a new one
+                self.list("DROP TABLE IF EXISTS TempOldTable")
                 self.list("ALTER TABLE {0} RENAME TO TempOldTable".format(table))
                 self.list("CREATE TABLE {0} ({1})".format(table, ', '.join(
                         ['{} {} {}'.format(c, t, r) for c, t, r in zip(columns, types, constraints)])))
@@ -1383,7 +1403,7 @@ def convert_spectrum(File):
         return spectrum
 
 
-def __create_waxis(fitsHeader, lenData, fileName, wlog=False):
+def __create_waxis(fitsHeader, lenData, fileName, wlog=False, verb=True):
     # Define key names in
     KEY_MIN = ['COEFF0', 'CRVAL1']  # Min wl
     KEY_DELT = ['COEFF1', 'CDELT1', 'CD1_1']  # Delta of wl
@@ -1423,7 +1443,7 @@ def __create_waxis(fitsHeader, lenData, fileName, wlog=False):
     return wAxis
 
 
-def __get_spec(fitsData, fitsHeader, fileName):
+def __get_spec(fitsData, fitsHeader, fileName, verb=True):
     validData = [None] * 3
 
     # Identify number of data sets in fits file
@@ -1584,7 +1604,7 @@ def pprint(data, names='', title='', formats={}):
         print(' '.join('-' * str_lengths[key] for key in pdata.keys()))
         for i in pdata:
             print(' '.join([str(i[key]).decode('utf-8')[:max_length].rjust(str_lengths[key])
-                           if i[key] else '-'.rjust(str_lengths[key]) for key in pdata.keys()]))                          
+                           if i[key] else '-'.rjust(str_lengths[key]) for key in pdata.keys()]))
 
 def clean_header(header):
     try:
@@ -1604,10 +1624,10 @@ def _help():
     result = '{:79s}'.format('Result')
     pprint(np.asarray([['<column name>', 'Display full record entry for that column without taking action'], \
                        ['k', 'Keeps both records and assigns second one new id if necessary'], \
-                       ['r', 'Replaces all columns of first record with second record values'], \
+                       ['r', 'Replaces all columns of first record with second record values and deletes second record'], \
                        ['r <column name> <column name> ...',
-                        'Replaces specified columns of first record with second record values'], \
-                       ['c', 'Complete empty columns of first record with second record values where possible'], \
+                        'Replaces specified columns of first record with second record values and deletes second record'], \
+                       ['c', 'Complete empty columns of first record with second record values where possible and deletes second record'], \
                        ['[Enter]', 'Keep first record and delete second'], \
                        ['sql <SQLite query>', 'Execute arbitrary raw SQLite command'], \
                        ['abort', 'Abort merge of current table, undo all changes, and proceed to next table']]), \
