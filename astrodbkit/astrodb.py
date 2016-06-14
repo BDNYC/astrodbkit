@@ -560,14 +560,22 @@ class Database:
             An array of all available row ids
 
         """
-        ids = self.query("SELECT id FROM {}".format(table), unpack=True)[0]
-        all_ids = np.array(range(1, max(ids)))
+        try:
+            ids = self.query("SELECT id FROM {}".format(table), unpack=True)[0]
+            all_ids = np.array(range(1, max(ids)))
+        except TypeError:
+            ids = None
+            all_ids = np.array([1])
+
         available = all_ids[np.in1d(all_ids, ids, assume_unique=True, invert=True)][:limit]
 
         # If there aren't enough empty row ids, start using the new ones
         if len(available) < limit:
             diff = limit - len(available)
-            available = np.concatenate((available, np.array(range(max(ids) + 1, max(ids) + 1 + diff))))
+            try:
+                available = np.concatenate((available, np.array(range(max(ids) + 1, max(ids) + 1 + diff))))
+            except TypeError:
+                pass  # do nothing if the table is empty (diff=0, ids=None)
 
         return available
 
