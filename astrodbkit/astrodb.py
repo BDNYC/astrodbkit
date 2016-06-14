@@ -137,6 +137,14 @@ class Database:
             columns, types, required = [np.array(metadata[n]) for n in ['name', 'type', 'notnull']]
             new_records = at.Table(names=columns, dtype=[type_dict[t] for t in types])
 
+            # Convert data dtypes to those of the existing table
+            for col in data.colnames:
+                try:
+                    temp = data[col].astype(new_records[col].dtype)
+                    data.replace_column(col, temp)
+                except KeyError:
+                    continue
+
             # If a row contains photometry for multiple bands, use the *multiband argument and execute this
             if bands and table.lower() == 'photometry':
 
