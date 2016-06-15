@@ -977,7 +977,10 @@ class Database:
           The table name
 
         """
-        pprint(self.query("PRAGMA table_info({})".format(table), fmt='table'))
+        try:
+            pprint(self.query("PRAGMA table_info({})".format(table), fmt='table'))
+        except ValueError:
+            print('Table {} not found'.format(table))
 
     def search(self, criterion, table, columns='', fetch=False):
         """
