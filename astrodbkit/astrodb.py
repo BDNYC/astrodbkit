@@ -137,6 +137,14 @@ class Database:
             columns, types, required = [np.array(metadata[n]) for n in ['name', 'type', 'notnull']]
             new_records = at.Table(names=columns, dtype=[type_dict[t] for t in types])
 
+            # Convert data dtypes to those of the existing table
+            for col in data.colnames:
+                try:
+                    temp = data[col].astype(new_records[col].dtype)
+                    data.replace_column(col, temp)
+                except KeyError:
+                    continue
+
             # If a row contains photometry for multiple bands, use the *multiband argument and execute this
             if bands and table.lower() == 'photometry':
 
@@ -552,8 +560,13 @@ class Database:
             An array of all available row ids
 
         """
-        ids = self.query("SELECT id FROM {}".format(table), unpack=True)[0]
-        all_ids = np.array(range(1, max(ids)))
+        try:
+            ids = self.query("SELECT id FROM {}".format(table), unpack=True)[0]
+            all_ids = np.array(range(1, max(ids)))
+        except TypeError:
+            ids = None
+            all_ids = np.array(range(1, limit+1))
+
         available = all_ids[np.in1d(all_ids, ids, assume_unique=True, invert=True)][:limit]
 
         # If there aren't enough empty row ids, start using the new ones
@@ -969,7 +982,10 @@ class Database:
           The table name
 
         """
-        pprint(self.query("PRAGMA table_info({})".format(table), fmt='table'))
+        try:
+            pprint(self.query("PRAGMA table_info({})".format(table), fmt='table'))
+        except ValueError:
+            print('Table {} not found'.format(table))
 
     def search(self, criterion, table, columns='', fetch=False):
         """
