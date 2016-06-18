@@ -142,7 +142,7 @@ class Database:
                 try:
                     temp = data[col].astype(new_records[col].dtype)
                     data.replace_column(col, temp)
-                except KeyError:
+                except (KeyError,AttributeError):
                     continue
 
             # If a row contains photometry for multiple bands, use the *multiband argument and execute this
