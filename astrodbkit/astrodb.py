@@ -1143,7 +1143,7 @@ class Database:
 
     def add_foreign_key(self, table, parent, key_child, key_parent, verbose=True):
         """
-        Add foreign key (**id2** from **table2**) to **table** column **id1**
+        Add foreign key (**key_parent** from **parent**) to **table** column **key_child**
 
         Parameters
         ----------
