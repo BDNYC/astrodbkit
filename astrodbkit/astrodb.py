@@ -747,6 +747,7 @@ class Database:
                     print('Number of records modified: {}'.format(self.list("SELECT changes()").fetchone()[0] or '0'))
         except:
             print("Could not execute: " + SQL)
+            raise IOError("Could not execute: " + SQL)
 
     def output_spectrum(self, spectrum, filepath, header={}, original=False):
         """
