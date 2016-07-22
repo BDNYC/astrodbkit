@@ -93,6 +93,9 @@ class Database:
             self.list(
                 "CREATE TABLE IF NOT EXISTS ignore (id INTEGER PRIMARY KEY, id1 INTEGER, id2 INTEGER, tablename TEXT)")
 
+            # Activate foreign key support
+            self.list('PRAGMA foreign_keys=ON')
+
         else:
             print("Sorry, no such file '{}'".format(dbpath))
 
@@ -1063,7 +1066,6 @@ class Database:
                 pprint(results, title=table.upper())
             else:
                 print("No results found for {} in {} the table.".format(criterion, table.upper()))
-                
 
     def table(self, table, columns, types, constraints='', new_table=False):
         """
@@ -1138,6 +1140,71 @@ class Database:
             print('The {} table has not been {}. Please make sure your table columns, \
              types, and constraints are formatted properly.'.format(table.upper(), \
                                                                     'created' if new_table else 'modified'))
+
+    def add_foreign_key(self, table, parent, key_child, key_parent, verbose=True):
+        """
+        Add foreign key (**id2** from **table2**) to **table** column **id1**
+
+        Parameters
+        ----------
+        table: string
+            The name of the table to modify. This is the child table.
+        parent: string
+            The name of the reference table. This is the parent table.
+        key_child: string
+            Column in **table** to set as foreign key. This is the child key.
+        key_parent: string
+            Column in **parent** that the foreign key refers to. This is the parent key.
+        verbose: bool, optional
+            Verbose output
+        """
+
+        # Temporarily turn off foreign keys
+        self.list('PRAGMA foreign_keys=OFF')
+
+        metadata = self.query("PRAGMA table_info({})".format(table), fmt='table')
+        columns, types, required, pk = [np.array(metadata[n]) for n in ['name', 'type', 'notnull', 'pk']]
+
+        # Set PRIMARY KEY columns
+        types = types.astype('S19')  # Make dtype long enough to store new string
+        for i in np.where(pk >= 1)[0]:
+            orig = types[i]
+            types[i] = orig + ' PRIMARY KEY'
+
+        # Set constraints
+        constraints = []
+        for elem in required:
+            if elem > 0:
+                constraints.append('UNIQUE NOT NULL')
+            else:
+                constraints.append('')
+
+        try:
+            # Rename the old table and create a new one
+            self.list("DROP TABLE IF EXISTS TempOldTable")
+            self.list("ALTER TABLE {0} RENAME TO TempOldTable".format(table))
+
+            # Re-create the table specifying the FOREIGN KEY
+            sqltxt = "CREATE TABLE {0} ({1}".format(table, ', '.join(['{} {} {}'.format(c, t, r)
+                                                                      for c, t, r in zip(columns, types, constraints)]))
+            sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) )'.format(key_child, parent, key_parent)
+            self.list(sqltxt)
+
+            # Populate the new table and drop the old one
+            old_columns = [c for c in self.query("PRAGMA table_info(TempOldTable)", unpack=True)[1] if c in columns]
+            self.modify("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable".format(table, ','.join(old_columns)))
+            self.list("DROP TABLE TempOldTable")
+
+            if verbose:
+                print('Successfully added foreign key.')
+                t = self.query('SELECT name, sql FROM sqlite_master', fmt='table')
+                print(t[t['name'] == table]['sql'][0].replace(',', ',\n'))
+
+        except:
+            print('Error attempting to add foreign key.')
+
+        # Reactivate foreign keys
+        self.list('PRAGMA foreign_keys=ON')
 
     def _explicit_query(self, SQL, use_converters=True):
         """
