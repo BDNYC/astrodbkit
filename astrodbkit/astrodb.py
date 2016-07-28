@@ -99,7 +99,7 @@ class Database:
         else:
             print("Sorry, no such file '{}'".format(dbpath))
 
-    def add_data(self, data, table, delimiter='|', bands=''):
+    def add_data(self, data, table, delimiter='|', bands='', verbose=False):
         """
     Adds data to the specified database table. Column names must match table fields to insert,
     however order and completeness don't matter.
@@ -117,6 +117,8 @@ class Database:
       Sequence of band to look for in the data header when digesting columns of
       multiple photometric measurements (e.g. ['MKO_J','MKO_H','MKO_K']) into individual
       rows of data for database insertion
+    verbose: bool
+      Print diagnostic messages
 
     """
         # Store raw entry
@@ -214,7 +216,7 @@ class Database:
                     if type(col) == np.ma.core.MaskedConstant:
                         new_rec[n] = None
                 self.modify("INSERT INTO {} VALUES({})".format(table, ','.join('?' * len(columns))), new_rec,
-                            verbose=False)
+                            verbose=verbose)
                 new_records[N]['id'] = rowids[N]
 
             # print(a table of the new records or bad news
@@ -733,21 +735,17 @@ class Database:
         verbose: bool
                 Prints the number of modified records
         """
-        try:
+        # Make sure the database isn't locked
+        self.conn.commit()
 
-            # Make sure the database isn't locked
+        if SQL.lower().startswith('select'):
+            print('Use self.query method for queries.')
+        else:
+            self.list(SQL, params)
             self.conn.commit()
+            if verbose:
+                print('Number of records modified: {}'.format(self.list("SELECT changes()").fetchone()[0] or '0'))
 
-            if SQL.lower().startswith('select'):
-                print('Use self.query method for queries.')
-            else:
-                self.list(SQL, params)
-                self.conn.commit()
-                if verbose:
-                    print('Number of records modified: {}'.format(self.list("SELECT changes()").fetchone()[0] or '0'))
-        except:
-            print("Could not execute: " + SQL)
-            raise IOError("Could not execute: " + SQL)
 
     def output_spectrum(self, spectrum, filepath, header={}, original=False):
         """
@@ -1150,11 +1148,11 @@ class Database:
         ----------
         table: string
             The name of the table to modify. This is the child table.
-        parent: string
+        parent: string or list of strings
             The name of the reference table. This is the parent table.
-        key_child: string
+        key_child: string or list of strings
             Column in **table** to set as foreign key. This is the child key.
-        key_parent: string
+        key_parent: string or list of strings
             Column in **parent** that the foreign key refers to. This is the parent key.
         verbose: bool, optional
             Verbose output
@@ -1166,19 +1164,20 @@ class Database:
         metadata = self.query("PRAGMA table_info({})".format(table), fmt='table')
         columns, types, required, pk = [np.array(metadata[n]) for n in ['name', 'type', 'notnull', 'pk']]
 
+        # Set constraints
+        constraints = []
+        for elem in required:
+            if elem > 0:
+                constraints.append('NOT NULL')
+            else:
+                constraints.append('')
+
         # Set PRIMARY KEY columns
         types = types.astype('S19')  # Make dtype long enough to store new string
         for i in np.where(pk >= 1)[0]:
             orig = types[i]
             types[i] = orig + ' PRIMARY KEY'
-
-        # Set constraints
-        constraints = []
-        for elem in required:
-            if elem > 0:
-                constraints.append('UNIQUE NOT NULL')
-            else:
-                constraints.append('')
+            constraints[i] += ' UNIQUE'  # Add UNIQUE constraint to primary keys
 
         try:
             # Rename the old table and create a new one
@@ -1188,7 +1187,13 @@ class Database:
             # Re-create the table specifying the FOREIGN KEY
             sqltxt = "CREATE TABLE {0} ({1}".format(table, ', '.join(['{} {} {}'.format(c, t, r)
                                                                       for c, t, r in zip(columns, types, constraints)]))
-            sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) )'.format(key_child, parent, key_parent)
+            if isinstance(key_child, type(list())):
+                for kc, p, kp in zip(key_child, parent, key_parent):
+                    sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2})'.format(kc, p, kp)
+            else:
+                sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2})'.format(key_child, parent, key_parent)
+            sqltxt += ' )'
+
             self.list(sqltxt)
 
             # Populate the new table and drop the old one
@@ -1203,6 +1208,8 @@ class Database:
 
         except:
             print('Error attempting to add foreign key.')
+            self.list("DROP TABLE IF EXISTS {0}".format(table))
+            self.list("ALTER TABLE TempOldTable RENAME TO {0}".format(table))
 
         # Reactivate foreign keys
         self.list('PRAGMA foreign_keys=ON')
