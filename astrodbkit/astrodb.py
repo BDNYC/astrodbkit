@@ -1146,8 +1146,11 @@ class Database:
 
             # If the table does not exist and new_table is True, create it
             elif table not in tables and new_table:
-                self.list("CREATE TABLE {0} ({1})".format(table, ', '.join(
-                        ['{} {} {}'.format(c, t, r) for c, t, r in zip(columns, types, constraints)])))
+                create_txt = "CREATE TABLE {0} ({1}".format(table, ', '.join(
+                    ['{} {} {}'.format(c, t, r) for c, t, r in zip(columns, types, constraints)]))
+                create_txt += ', PRIMARY KEY({}))'.format(', '.join([elem for elem in pk]))
+                print(create_txt.replace(',', ',\n'))
+                self.list(create_txt)
 
             # Otherwise the table to be modified doesn't exist or the new table to add already exists, so do nothing
             else:
@@ -1195,11 +1198,12 @@ class Database:
                 constraints.append('')
 
         # Set PRIMARY KEY columns
-        types = types.astype('S19')  # Make dtype long enough to store new string
+        # types = types.astype('S19')  # Make dtype long enough to store new string
         for i in np.where(pk >= 1)[0]:
-            orig = types[i]
-            types[i] = orig + ' PRIMARY KEY'
+            # orig = types[i]
+            # types[i] = orig + ' PRIMARY KEY'
             constraints[i] += ' UNIQUE'  # Add UNIQUE constraint to primary keys
+        pk_names = columns[np.where(pk > 0)[0]]
 
         try:
             # Rename the old table and create a new one
@@ -1209,6 +1213,7 @@ class Database:
             # Re-create the table specifying the FOREIGN KEY
             sqltxt = "CREATE TABLE {0} ({1}".format(table, ', '.join(['{} {} {}'.format(c, t, r)
                                                                       for c, t, r in zip(columns, types, constraints)]))
+            sqltxt += ', PRIMARY KEY({})'.format(', '.join([elem for elem in pk_names]))
             if isinstance(key_child, type(list())):
                 for kc, p, kp in zip(key_child, parent, key_parent):
                     sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2})'.format(kc, p, kp)
