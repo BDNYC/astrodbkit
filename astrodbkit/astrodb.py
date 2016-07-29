@@ -1066,7 +1066,7 @@ class Database:
             else:
                 print("No results found for {} in {} the table.".format(criterion, table.upper()))
 
-    def table(self, table, columns, types, constraints='', new_table=False):
+    def table(self, table, columns, types, constraints='', pk='', new_table=False):
         """
         Rearrange, add or delete columns from database **table** with desired ordered list of **columns** and corresponding data **types**.
 
@@ -1080,6 +1080,8 @@ class Database:
             A sequence of the types corresponding to each column in the columns list above.
         constraints: sequence (optional)
             A sequence of the constraints for each column, e.g. '', 'UNIQUE', 'NOT NULL', etc.
+        pk: string or list
+            Name(s) of the primary key(s) if other than ID
         new_table: bool
                 Create a new table
 
@@ -1091,15 +1093,32 @@ class Database:
         if columns[0] != 'id':
             print("Column 1 must be called 'id'")
             goodtogo = False
-        if types[0].upper() != 'INTEGER PRIMARY KEY':
-            print("'id' column type must be 'INTEGER PRIMARY KEY'")
-            goodtogo = False
+
+        # if types[0].upper() != 'INTEGER PRIMARY KEY':
+        #     print("'id' column type must be 'INTEGER PRIMARY KEY'")
+        #     goodtogo = False
+
         if constraints:
             if 'UNIQUE' not in constraints[0].upper() and 'NOT NULL' not in constraints[0].upper():
                 print("'id' column constraints must be 'UNIQUE NOT NULL'")
                 goodtogo = False
         else:
             constraints = ['UNIQUE NOT NULL'] + ([''] * (len(columns) - 1))
+
+        # Set UNIQUE NOT NULL constraints for the primary keys, except ID which is already has them
+        if pk:
+            if not isinstance(pk, type(list())):
+                pk = list(pk)
+
+            for elem in pk:
+                if elem == 'id':
+                    continue
+                else:
+                    ind = np.where(columns == elem)[0]
+                    constraints[ind] = 'UNIQUE NOT NULL'
+        else:
+            pk = ['id']
+
         if not len(columns) == len(types) == len(constraints):
             print("Must provide equal length *columns ({}), *types ({}), and *constraints ({}) sequences." \
                   .format(len(columns), len(types), len(constraints)))
@@ -1114,8 +1133,11 @@ class Database:
                 # Rename the old table and create a new one
                 self.list("DROP TABLE IF EXISTS TempOldTable")
                 self.list("ALTER TABLE {0} RENAME TO TempOldTable".format(table))
-                self.list("CREATE TABLE {0} ({1})".format(table, ', '.join(
-                        ['{} {} {}'.format(c, t, r) for c, t, r in zip(columns, types, constraints)])))
+                create_txt = "CREATE TABLE {0} ({1}".format(table, ', '.join(
+                        ['{} {} {}'.format(c, t, r) for c, t, r in zip(columns, types, constraints)]))
+                create_txt += ', PRIMARY KEY({}))'.format(', '.join([elem for elem in pk]))
+                print(create_txt.replace(',', ',\n'))
+                self.list(create_txt)
 
                 # Populate the new table and drop the old one
                 old_columns = [c for c in self.query("PRAGMA table_info(TempOldTable)", unpack=True)[1] if c in columns]
