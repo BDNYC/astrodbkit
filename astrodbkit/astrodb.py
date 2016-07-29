@@ -1198,10 +1198,7 @@ class Database:
                 constraints.append('')
 
         # Set PRIMARY KEY columns
-        # types = types.astype('S19')  # Make dtype long enough to store new string
         for i in np.where(pk >= 1)[0]:
-            # orig = types[i]
-            # types[i] = orig + ' PRIMARY KEY'
             constraints[i] += ' UNIQUE'  # Add UNIQUE constraint to primary keys
         pk_names = columns[np.where(pk > 0)[0]]
 
