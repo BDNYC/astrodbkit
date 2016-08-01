@@ -93,10 +93,13 @@ class Database:
             self.list(
                 "CREATE TABLE IF NOT EXISTS ignore (id INTEGER PRIMARY KEY, id1 INTEGER, id2 INTEGER, tablename TEXT)")
 
+            # Activate foreign key support
+            self.list('PRAGMA foreign_keys=ON')
+
         else:
             print("Sorry, no such file '{}'".format(dbpath))
 
-    def add_data(self, data, table, delimiter='|', bands=''):
+    def add_data(self, data, table, delimiter='|', bands='', verbose=False):
         """
     Adds data to the specified database table. Column names must match table fields to insert,
     however order and completeness don't matter.
@@ -114,6 +117,8 @@ class Database:
       Sequence of band to look for in the data header when digesting columns of
       multiple photometric measurements (e.g. ['MKO_J','MKO_H','MKO_K']) into individual
       rows of data for database insertion
+    verbose: bool
+      Print diagnostic messages
 
     """
         # Store raw entry
@@ -211,7 +216,7 @@ class Database:
                     if type(col) == np.ma.core.MaskedConstant:
                         new_rec[n] = None
                 self.modify("INSERT INTO {} VALUES({})".format(table, ','.join('?' * len(columns))), new_rec,
-                            verbose=False)
+                            verbose=verbose)
                 new_records[N]['id'] = rowids[N]
 
             # print(a table of the new records or bad news
@@ -730,20 +735,17 @@ class Database:
         verbose: bool
                 Prints the number of modified records
         """
-        try:
+        # Make sure the database isn't locked
+        self.conn.commit()
 
-            # Make sure the database isn't locked
+        if SQL.lower().startswith('select'):
+            print('Use self.query method for queries.')
+        else:
+            self.list(SQL, params)
             self.conn.commit()
+            if verbose:
+                print('Number of records modified: {}'.format(self.list("SELECT changes()").fetchone()[0] or '0'))
 
-            if SQL.lower().startswith('select'):
-                print('Use self.query method for queries.')
-            else:
-                self.list(SQL, params)
-                self.conn.commit()
-                if verbose:
-                    print('Number of records modified: {}'.format(self.list("SELECT changes()").fetchone()[0] or '0'))
-        except:
-            print("Could not execute: " + SQL)
 
     def output_spectrum(self, spectrum, filepath, header={}, original=False):
         """
@@ -1063,9 +1065,8 @@ class Database:
                 pprint(results, title=table.upper())
             else:
                 print("No results found for {} in {} the table.".format(criterion, table.upper()))
-                
 
-    def table(self, table, columns, types, constraints='', new_table=False):
+    def table(self, table, columns, types, constraints='', pk='', new_table=False):
         """
         Rearrange, add or delete columns from database **table** with desired ordered list of **columns** and corresponding data **types**.
 
@@ -1079,6 +1080,8 @@ class Database:
             A sequence of the types corresponding to each column in the columns list above.
         constraints: sequence (optional)
             A sequence of the constraints for each column, e.g. '', 'UNIQUE', 'NOT NULL', etc.
+        pk: string or list
+            Name(s) of the primary key(s) if other than ID
         new_table: bool
                 Create a new table
 
@@ -1090,15 +1093,32 @@ class Database:
         if columns[0] != 'id':
             print("Column 1 must be called 'id'")
             goodtogo = False
-        if types[0].upper() != 'INTEGER PRIMARY KEY':
-            print("'id' column type must be 'INTEGER PRIMARY KEY'")
-            goodtogo = False
+
+        # if types[0].upper() != 'INTEGER PRIMARY KEY':
+        #     print("'id' column type must be 'INTEGER PRIMARY KEY'")
+        #     goodtogo = False
+
         if constraints:
             if 'UNIQUE' not in constraints[0].upper() and 'NOT NULL' not in constraints[0].upper():
                 print("'id' column constraints must be 'UNIQUE NOT NULL'")
                 goodtogo = False
         else:
             constraints = ['UNIQUE NOT NULL'] + ([''] * (len(columns) - 1))
+
+        # Set UNIQUE NOT NULL constraints for the primary keys, except ID which is already has them
+        if pk:
+            if not isinstance(pk, type(list())):
+                pk = list(pk)
+
+            for elem in pk:
+                if elem == 'id':
+                    continue
+                else:
+                    ind = np.where(columns == elem)[0]
+                    constraints[ind] = 'UNIQUE NOT NULL'
+        else:
+            pk = ['id']
+
         if not len(columns) == len(types) == len(constraints):
             print("Must provide equal length *columns ({}), *types ({}), and *constraints ({}) sequences." \
                   .format(len(columns), len(types), len(constraints)))
@@ -1113,8 +1133,11 @@ class Database:
                 # Rename the old table and create a new one
                 self.list("DROP TABLE IF EXISTS TempOldTable")
                 self.list("ALTER TABLE {0} RENAME TO TempOldTable".format(table))
-                self.list("CREATE TABLE {0} ({1})".format(table, ', '.join(
-                        ['{} {} {}'.format(c, t, r) for c, t, r in zip(columns, types, constraints)])))
+                create_txt = "CREATE TABLE {0} ({1}".format(table, ', '.join(
+                        ['{} {} {}'.format(c, t, r) for c, t, r in zip(columns, types, constraints)]))
+                create_txt += ', PRIMARY KEY({}))'.format(', '.join([elem for elem in pk]))
+                print(create_txt.replace(',', ',\n'))
+                self.list(create_txt)
 
                 # Populate the new table and drop the old one
                 old_columns = [c for c in self.query("PRAGMA table_info(TempOldTable)", unpack=True)[1] if c in columns]
@@ -1123,8 +1146,11 @@ class Database:
 
             # If the table does not exist and new_table is True, create it
             elif table not in tables and new_table:
-                self.list("CREATE TABLE {0} ({1})".format(table, ', '.join(
-                        ['{} {} {}'.format(c, t, r) for c, t, r in zip(columns, types, constraints)])))
+                create_txt = "CREATE TABLE {0} ({1}".format(table, ', '.join(
+                    ['{} {} {}'.format(c, t, r) for c, t, r in zip(columns, types, constraints)]))
+                create_txt += ', PRIMARY KEY({}))'.format(', '.join([elem for elem in pk]))
+                print(create_txt.replace(',', ',\n'))
+                self.list(create_txt)
 
             # Otherwise the table to be modified doesn't exist or the new table to add already exists, so do nothing
             else:
@@ -1138,6 +1164,79 @@ class Database:
             print('The {} table has not been {}. Please make sure your table columns, \
              types, and constraints are formatted properly.'.format(table.upper(), \
                                                                     'created' if new_table else 'modified'))
+
+    def add_foreign_key(self, table, parent, key_child, key_parent, verbose=True):
+        """
+        Add foreign key (**key_parent** from **parent**) to **table** column **key_child**
+
+        Parameters
+        ----------
+        table: string
+            The name of the table to modify. This is the child table.
+        parent: string or list of strings
+            The name of the reference table. This is the parent table.
+        key_child: string or list of strings
+            Column in **table** to set as foreign key. This is the child key.
+        key_parent: string or list of strings
+            Column in **parent** that the foreign key refers to. This is the parent key.
+        verbose: bool, optional
+            Verbose output
+        """
+
+        # Temporarily turn off foreign keys
+        self.list('PRAGMA foreign_keys=OFF')
+
+        metadata = self.query("PRAGMA table_info({})".format(table), fmt='table')
+        columns, types, required, pk = [np.array(metadata[n]) for n in ['name', 'type', 'notnull', 'pk']]
+
+        # Set constraints
+        constraints = []
+        for elem in required:
+            if elem > 0:
+                constraints.append('NOT NULL')
+            else:
+                constraints.append('')
+
+        # Set PRIMARY KEY columns
+        for i in np.where(pk >= 1)[0]:
+            constraints[i] += ' UNIQUE'  # Add UNIQUE constraint to primary keys
+        pk_names = columns[np.where(pk > 0)[0]]
+
+        try:
+            # Rename the old table and create a new one
+            self.list("DROP TABLE IF EXISTS TempOldTable")
+            self.list("ALTER TABLE {0} RENAME TO TempOldTable".format(table))
+
+            # Re-create the table specifying the FOREIGN KEY
+            sqltxt = "CREATE TABLE {0} ({1}".format(table, ', '.join(['{} {} {}'.format(c, t, r)
+                                                                      for c, t, r in zip(columns, types, constraints)]))
+            sqltxt += ', PRIMARY KEY({})'.format(', '.join([elem for elem in pk_names]))
+            if isinstance(key_child, type(list())):
+                for kc, p, kp in zip(key_child, parent, key_parent):
+                    sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2})'.format(kc, p, kp)
+            else:
+                sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2})'.format(key_child, parent, key_parent)
+            sqltxt += ' )'
+
+            self.list(sqltxt)
+
+            # Populate the new table and drop the old one
+            old_columns = [c for c in self.query("PRAGMA table_info(TempOldTable)", unpack=True)[1] if c in columns]
+            self.modify("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable".format(table, ','.join(old_columns)))
+            self.list("DROP TABLE TempOldTable")
+
+            if verbose:
+                print('Successfully added foreign key.')
+                t = self.query('SELECT name, sql FROM sqlite_master', fmt='table')
+                print(t[t['name'] == table]['sql'][0].replace(',', ',\n'))
+
+        except:
+            print('Error attempting to add foreign key.')
+            self.list("DROP TABLE IF EXISTS {0}".format(table))
+            self.list("ALTER TABLE TempOldTable RENAME TO {0}".format(table))
+
+        # Reactivate foreign keys
+        self.list('PRAGMA foreign_keys=ON')
 
     def _explicit_query(self, SQL, use_converters=True):
         """
