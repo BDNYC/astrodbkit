@@ -1213,9 +1213,9 @@ class Database:
             sqltxt += ', PRIMARY KEY({})'.format(', '.join([elem for elem in pk_names]))
             if isinstance(key_child, type(list())):
                 for kc, p, kp in zip(key_child, parent, key_parent):
-                    sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2})'.format(kc, p, kp)
+                    sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(kc, p, kp)
             else:
-                sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2})'.format(key_child, parent, key_parent)
+                sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(key_child, parent, key_parent)
             sqltxt += ' )'
 
             self.list(sqltxt)
