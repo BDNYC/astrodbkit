@@ -25,6 +25,8 @@ def create_database(dbpath):
     ----------
     dbpath: str
         The full path for the new database, including the filename and .db file extension.
+    verbose: bool
+        Print status in the command line
 
   """
     if dbpath.endswith('.db'):
@@ -46,7 +48,7 @@ class Database:
     Parameters
     ----------
     dbpath: str
-        The path to the database file.
+        The path to the .db or .sql database file.
 
     Returns
     -------
@@ -61,7 +63,7 @@ class Database:
         Parameters
         ----------
         dbpath: str
-            The path to the database file.
+            The path to the .db or .sql database file.
 
         Returns
         -------
@@ -70,11 +72,20 @@ class Database:
 
         """
         if os.path.isfile(dbpath):
-
+            
+            # If it is a .sql file, create an empty database in the 
+            # working directory and generate the database from file
+            if dbpath.endswith('.sql'):
+                sqlpath, dbpath = dbpath, dbpath[:-4]+'.db'
+                os.system("sqlite3 {} < {}".format(dbpath,sqlpath))
+            else:
+                sqlpath = ''
+                
             # Create connection
             con = sqlite3.connect(dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
             con.text_factory = str
             self.conn = con
+            self.curs = con.cursor()
             self.close = self.conn.close
             self.list = con.cursor().execute
 
@@ -88,14 +99,13 @@ class Database:
             self.dict = con.cursor()
             self.dict.row_factory = dict_factory
             self.dict = self.dict.execute
-
+                
             # Make sure the ignore table exists
-            self.list(
-                "CREATE TABLE IF NOT EXISTS ignore (id INTEGER PRIMARY KEY, id1 INTEGER, id2 INTEGER, tablename TEXT)")
+            self.list("CREATE TABLE IF NOT EXISTS ignore (id INTEGER PRIMARY KEY, id1 INTEGER, id2 INTEGER, tablename TEXT)")
 
             # Activate foreign key support
             self.list('PRAGMA foreign_keys=ON')
-
+            
         else:
             print("Sorry, no such file '{}'".format(dbpath))
 
@@ -427,6 +437,15 @@ class Database:
         # Prompt again
         else:
             print("\nInvalid command: {}\nTry again or type 'help' or 'abort'.\n".format(replace))
+            
+    def _dump(self, filepath='/Users/Joe/Desktop/BDNYCdb.sql'):
+        """
+        Dump the entire contents of the database into a .sql file.
+        Use this to make 'commits' to Github.
+        """
+        with open(filename, 'w') as f:
+            for line in self.conn.iterdump():
+                f.write('%s\n' % line)       
 
     def inventory(self, source_id, fetch=False, fmt='table'):
         """
