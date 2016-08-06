@@ -1603,7 +1603,7 @@ def pprint(data, names='', title='', formats={}):
         pdata.rename_column(old, new) if new != old else None
 
     # Format the columns
-    formats.update({'comments': '%.15s', 'obs_date': '%.10s', 'names': '%.20s', 'description': '%.50s'})
+    formats.update({'comments': '%.15s', 'obs_date': '%.10s', 'names': '%.30s', 'description': '%.50s'})
 
     # print it!
     if title: print('\n' + title)
