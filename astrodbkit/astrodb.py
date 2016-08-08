@@ -76,17 +76,28 @@ class Database:
             # If it is a .sql file, create an empty database in the 
             # working directory and generate the database from file
             if dbpath.endswith('.sql'):
-                sqlpath, dbpath = dbpath, dbpath[:-4]+'.db'
-                os.system("sqlite3 {} < {}".format(dbpath,sqlpath))
+                self.sqlpath = dbpath
+                dbpath = dbpath[:-4]+'.db'
+                self.dbpath = dbpath
+                
+                # If the .db file already exists, rename it with the date
+                if os.path.isfile(dbpath):
+                    import datetime
+                    date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")
+                    os.system("mv {} {}".format(dbpath,dbpath.replace('.db',date+'.db')))
+                
+                # Make the new database from the .sql file
+                os.system("sqlite3 {} < {}".format(dbpath,self.sqlpath))
+            
             else:
-                sqlpath = ''
+                self.sqlpath = ''
+                self.dbpath = dbpath
                 
             # Create connection
             con = sqlite3.connect(dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
             con.text_factory = str
             self.conn = con
             self.curs = con.cursor()
-            self.close = self.conn.close
             self.list = con.cursor().execute
 
             # Make dictionary
@@ -101,6 +112,7 @@ class Database:
             self.dict = self.dict.execute
                 
             # Make sure the ignore table exists
+            # This is necessary for _compare_records() method to work.
             self.list("CREATE TABLE IF NOT EXISTS ignore (id INTEGER PRIMARY KEY, id1 INTEGER, id2 INTEGER, tablename TEXT)")
 
             # Activate foreign key support
@@ -109,28 +121,39 @@ class Database:
         else:
             print("Sorry, no such file '{}'".format(dbpath))
 
+    @property
+    def close(self):
+        """
+        Close the database and ask to delete the file
+        """
+        delete = raw_input("Do you want to delete {}? Don't worry, a new one will be generated when you run astrodb.Database() again. ([y],n) : ".format(self.dbpath))
+        if delete=='y':
+            os.system("rm {}".format(self.dbpath))
+            
+        self.conn.close
+
     def add_data(self, data, table, delimiter='|', bands='', verbose=False):
         """
-    Adds data to the specified database table. Column names must match table fields to insert,
-    however order and completeness don't matter.
+        Adds data to the specified database table. Column names must match table fields to insert,
+        however order and completeness don't matter.
 
-    Parameters
-    ----------
-    data: str, sequence
-      The path to an ascii file or a list of lists. The first row or element must
-      be the list of column names
-    table: str
-      The name of the table into which the data should be inserted
-    delimiter: str
-      The string to use as the delimiter when parsing the ascii file
-    bands: sequence
-      Sequence of band to look for in the data header when digesting columns of
-      multiple photometric measurements (e.g. ['MKO_J','MKO_H','MKO_K']) into individual
-      rows of data for database insertion
-    verbose: bool
-      Print diagnostic messages
+        Parameters
+        ----------
+        data: str, sequence
+          The path to an ascii file or a list of lists. The first row or element must
+          be the list of column names
+        table: str
+          The name of the table into which the data should be inserted
+        delimiter: str
+          The string to use as the delimiter when parsing the ascii file
+        bands: sequence
+          Sequence of band to look for in the data header when digesting columns of
+          multiple photometric measurements (e.g. ['MKO_J','MKO_H','MKO_K']) into individual
+          rows of data for database insertion
+        verbose: bool
+          Print diagnostic messages
 
-    """
+        """
         # Store raw entry
         entry, del_records = data, []
 
@@ -438,15 +461,6 @@ class Database:
         else:
             print("\nInvalid command: {}\nTry again or type 'help' or 'abort'.\n".format(replace))
             
-    def _dump(self, filepath='/Users/Joe/Desktop/BDNYCdb.sql'):
-        """
-        Dump the entire contents of the database into a .sql file.
-        Use this to make 'commits' to Github.
-        """
-        with open(filename, 'w') as f:
-            for line in self.conn.iterdump():
-                f.write('%s\n' % line)       
-
     def inventory(self, source_id, fetch=False, fmt='table'):
         """
         Prints a summary of all objects in the database. Input string or list of strings in **ID** or **unum** for specific objects.
@@ -992,6 +1006,38 @@ class Database:
 
         except IOError:
             print('Could not execute: ' + SQL)
+
+    def save(self, branch='auto_db'):
+        """
+        Dump the entire contents of the database into a .sql file and push to Github
+        
+        Parameters
+        ==========
+        branch: str
+            The name of the git branch to push to
+        """
+        from subprocess import call
+        import socket, datetime
+        
+        # Write the data to the .sql file
+        with open(self.sqlpath, 'w') as f:
+            for line in self.conn.iterdump():
+                f.write('%s\n' % line)
+        
+        # Collect name and commit message from the user and push to Github
+        user = raw_input('Please enter your name : ')
+        commit = raw_input('Briefly describe the changes you have made : ')
+        if user and commit:
+            try:
+                call('git checkout {}'.format(branch), shell=True)
+                call('git pull origin {}'.format(branch), shell=True)
+                call('git add {}'.format(self.sqlpath), shell=True)
+                call('git commit -m "(via astrodbkit) {}"'.format(commit), shell=True)
+                call('git push origin {}'.format(branch), shell=True)    
+            except:
+                print('Sorry, could not save those changes. Make sure you are working from a git repo.')
+        else:
+            print('Sorry, astrodbkit needs a username and commit message to push changes to Guthub.')
 
     def schema(self, table):
         """
