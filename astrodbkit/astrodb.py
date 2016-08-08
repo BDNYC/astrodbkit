@@ -2,6 +2,11 @@
 # encoding: utf-8
 # Author: Joe Filippazzo, jcfilippazzo@gmail.com
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 import io
 import os
 import sys
@@ -12,7 +17,7 @@ import matplotlib.pyplot as plt
 import astropy.io.fits as pf
 import astropy.io.ascii as ii
 import astropy.table as at
-from . import votools
+from astrodbkit import votools
 
 warnings.simplefilter('ignore')
 
