@@ -30,8 +30,6 @@ def create_database(dbpath):
     ----------
     dbpath: str
         The full path for the new database, including the filename and .db file extension.
-    verbose: bool
-        Print status in the command line
 
   """
     if dbpath.endswith('.db'):
@@ -47,20 +45,6 @@ def create_database(dbpath):
 
 
 class Database:
-    """
-    Initialize the database.
-
-    Parameters
-    ----------
-    dbpath: str
-        The path to the .db or .sql database file.
-
-    Returns
-    -------
-    object
-        The database object
-    """
-
     def __init__(self, dbpath):
         """
         Initialize the database.
@@ -125,17 +109,6 @@ class Database:
             
         else:
             print("Sorry, no such file '{}'".format(dbpath))
-
-    @property
-    def close(self):
-        """
-        Close the database and ask to delete the file
-        """
-        delete = raw_input("Do you want to delete {}? Don't worry, a new one will be generated when you run astrodb.Database() again. ([y],n) : ".format(self.dbpath))
-        if delete=='y':
-            os.system("rm {}".format(self.dbpath))
-            
-        self.conn.close
 
     def add_data(self, data, table, delimiter='|', bands='', verbose=False):
         """
@@ -370,6 +343,17 @@ class Database:
             return 'abort'
         else:
             print('\nFinished clean up on {} table.'.format(table.upper()))
+
+    @property
+    def close(self):
+        """
+        Close the database and ask to delete the file
+        """
+        delete = raw_input("Do you want to delete {}? Don't worry, a new one will be generated when you run astrodb.Database() again. ([y],n) : ".format(self.dbpath))
+        if delete=='y':
+            os.system("rm {}".format(self.dbpath))
+            
+        self.conn.close
 
     def _compare_records(self, table, duplicate, options=['r', 'c', 'k', 'sql']):
         """
@@ -1732,8 +1716,8 @@ sqlite3.register_adapter(np.ndarray, adapt_array)
 # sqlite3.register_adapter(str, adapt_spectrum)
 
 # Register the converters
-sqlite3.register_converter("ARRAY", convert_array)
-sqlite3.register_converter("SPECTRUM", convert_spectrum)
+sqlite3.register_converter(str('ARRAY'), convert_array)
+sqlite3.register_converter(str('SPECTRUM'), convert_spectrum)
 
 
 def pprint(data, names='', title='', formats={}):
