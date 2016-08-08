@@ -22,6 +22,13 @@ from astrodbkit import votools
 warnings.simplefilter('ignore')
 
 
+# Proper handling of input vs raw_input in Python 3 vs 2
+if sys.version_info[0] >= 3:
+    get_input = input  # Python 3
+else:
+    get_input = raw_input  # Python 2
+
+
 def create_database(dbpath):
     """
     Create a new database at the given dbpath
@@ -349,7 +356,7 @@ class Database:
         """
         Close the database and ask to delete the file
         """
-        delete = raw_input("Do you want to delete {}? Don't worry, a new one will be generated when you run astrodb.Database() again. ([y],n) : ".format(self.dbpath))
+        delete = get_input("Do you want to delete {}? Don't worry, a new one will be generated when you run astrodb.Database() again. ([y],n) : ".format(self.dbpath))
         if delete=='y':
             os.system("rm {}".format(self.dbpath))
             
@@ -376,7 +383,7 @@ class Database:
         old, new = [[data[n][k] for k in columns[1:]] for n in [0, 1]]
 
         # Prompt the user for action
-        replace = raw_input(
+        replace = get_input(
             "\nKeep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(
                     duplicate[0])).lower()
         replace = replace.strip()
@@ -390,7 +397,7 @@ class Database:
             elif replace == 'help':
                 _help()
 
-            replace = raw_input(
+            replace = get_input(
                 "\nKeep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(
                         duplicate[0])).lower()
 
@@ -398,7 +405,7 @@ class Database:
 
             # Replace the entire old record with the new record
             if replace == 'r':
-                sure = raw_input(
+                sure = get_input(
                     'Are you sure you want to replace record {} with record {}? [y/n] : '.format(*duplicate))
                 if sure.lower() == 'y':
                     self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[0]), verbose=False)
@@ -630,7 +637,7 @@ class Database:
 
             # Gather user data to add to CHANGELOG table
             import socket, datetime
-            if not diff_only: user = raw_input('Please enter your name : ')
+            if not diff_only: user = get_input('Please enter your name : ')
             machine_name = socket.gethostname()
             date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
             modified_tables = []
@@ -726,7 +733,7 @@ class Database:
 
             # Add data to CHANGELOG table
             if not diff_only:
-                user_description = raw_input('\nPlease describe the changes made in this merge: ')
+                user_description = get_input('\nPlease describe the changes made in this merge: ')
                 self.list("INSERT INTO changelog VALUES(?, ?, ?, ?, ?, ?, ?)", \
                           (None, date, str(user), machine_name, ', '.join(modified_tables), user_description,
                            os.path.basename(conflicted)))
@@ -996,7 +1003,7 @@ class Database:
         except IOError:
             print('Could not execute: ' + SQL)
 
-    def save(self, branch='auto_db'):
+    def save(self, branch='auto_db', push_github=True):
         """
         Dump the entire contents of the database into a .sql file and push to Github
         
@@ -1004,6 +1011,8 @@ class Database:
         ==========
         branch: str
             The name of the git branch to push to
+        push_github: bool
+            Push to GitHub (default: True)
         """
         from subprocess import call
         import socket, datetime
@@ -1013,20 +1022,21 @@ class Database:
             for line in self.conn.iterdump():
                 f.write('%s\n' % line)
         
-        # Collect name and commit message from the user and push to Github
-        user = raw_input('Please enter your name : ')
-        commit = raw_input('Briefly describe the changes you have made : ')
-        if user and commit:
-            try:
-                call('git checkout {}'.format(branch), shell=True)
-                call('git pull origin {}'.format(branch), shell=True)
-                call('git add {}'.format(self.sqlpath), shell=True)
-                call('git commit -m "(via astrodbkit) {}"'.format(commit), shell=True)
-                call('git push origin {}'.format(branch), shell=True)    
-            except:
-                print('Sorry, could not save those changes. Make sure you are working from a git repo.')
-        else:
-            print('Sorry, astrodbkit needs a username and commit message to push changes to Guthub.')
+        # Collect name and commit message from the user and push to GitHub
+        if push_github:
+            user = get_input('Please enter your name : ')
+            commit = get_input('Briefly describe the changes you have made : ')
+            if user and commit:
+                try:
+                    call('git checkout {}'.format(branch), shell=True)
+                    call('git pull origin {}'.format(branch), shell=True)
+                    call('git add {}'.format(self.sqlpath), shell=True)
+                    call('git commit -m "(via astrodbkit) {}"'.format(commit), shell=True)
+                    call('git push origin {}'.format(branch), shell=True)
+                except:
+                    print('Sorry, could not save those changes. Make sure you are working from a git repo.')
+            else:
+                print('Sorry, astrodbkit needs a username and commit message to push changes to Guthub.')
 
     def schema(self, table):
         """
