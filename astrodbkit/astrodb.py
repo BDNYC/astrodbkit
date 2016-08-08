@@ -68,21 +68,29 @@ class Database:
             # working directory and generate the database from file
             if dbpath.endswith('.sql'):
                 self.sqlpath = dbpath
-                dbpath = dbpath[:-4]+'.db'
-                self.dbpath = dbpath
+                self.dbpath = dbpath.replace('.sql','.db')
                 
                 # If the .db file already exists, rename it with the date
-                if os.path.isfile(dbpath):
+                if os.path.isfile(self.dbpath):
                     import datetime
                     date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")
-                    os.system("mv {} {}".format(dbpath,dbpath.replace('.db',date+'.db')))
+                    os.system("mv {} {}".format(self.dbpath,self.dbpath.replace('.db',date+'.db')))
                 
-                # Make the new database from the .sql file
-                os.system("sqlite3 {} < {}".format(dbpath,self.sqlpath))
+                # Make the new database from the .sql files
+                # First the schema...
+                os.system("sqlite3 {} < {}".format(self.dbpath,self.sqlpath))
+                
+                # Then load the table data...
+                tables = os.popen('sqlite3 {} ".tables"'.format(self.dbpath)).read().replace('\n',' ').split()
+                for table in tables:
+                    os.system('sqlite3 {0} ".read tabledata/{0}.sql"'.format(table))
             
             else:
-                self.sqlpath = ''
+                self.sqlpath = dbpath.replace('.db','.sql')
                 self.dbpath = dbpath
+            
+            # Create .sql scema file if it doesn't exist
+            os.system('touch {}'.format(self.sqlpath))
                 
             # Create connection
             con = sqlite3.connect(dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
@@ -1024,7 +1032,7 @@ class Database:
         # Write the schema
         os.system("echo '.output {}\n.schema' | sqlite3 {}".format(self.sqlpath,self.dbpath))
         
-        #Write the table files to the tabledata directory
+        # Write the table files to the tabledata directory
         os.system("mkdir -p tabledata")
         tables = self.query("select tbl_name from sqlite_master where type='table'")['tbl_name']
         tablepaths = [self.sqlpath]
@@ -1039,7 +1047,6 @@ class Database:
         # Collect name and commit message from the user and push to Github
         user = input('Please enter your name : ')
         commit = input('Briefly describe the changes you have made : ')
-        print(tablepaths+[self.sqlpath])
         if user and commit:
             try:
                 call('git checkout {}'.format(branch), shell=True)
