@@ -62,6 +62,8 @@ class Database:
         """
         if os.path.isfile(dbpath):
             
+            # Alternatively, just list the directory with the schema and .sql files and require that dbpath is the schema file, then load the tables individually
+            
             # If it is a .sql file, create an empty database in the 
             # working directory and generate the database from file
             if dbpath.endswith('.sql'):
@@ -349,7 +351,7 @@ class Database:
         """
         Close the database and ask to delete the file
         """
-        delete = raw_input("Do you want to delete {}? Don't worry, a new one will be generated when you run astrodb.Database() again. ([y],n) : ".format(self.dbpath))
+        delete = input("Do you want to delete {}? Don't worry, a new one will be generated when you run astrodb.Database() again. ([y],n) : ".format(self.dbpath))
         if delete=='y':
             os.system("rm {}".format(self.dbpath))
             
@@ -376,7 +378,7 @@ class Database:
         old, new = [[data[n][k] for k in columns[1:]] for n in [0, 1]]
 
         # Prompt the user for action
-        replace = raw_input(
+        replace = input(
             "\nKeep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(
                     duplicate[0])).lower()
         replace = replace.strip()
@@ -390,7 +392,7 @@ class Database:
             elif replace == 'help':
                 _help()
 
-            replace = raw_input(
+            replace = input(
                 "\nKeep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(
                         duplicate[0])).lower()
 
@@ -398,7 +400,7 @@ class Database:
 
             # Replace the entire old record with the new record
             if replace == 'r':
-                sure = raw_input(
+                sure = input(
                     'Are you sure you want to replace record {} with record {}? [y/n] : '.format(*duplicate))
                 if sure.lower() == 'y':
                     self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[0]), verbose=False)
@@ -630,7 +632,7 @@ class Database:
 
             # Gather user data to add to CHANGELOG table
             import socket, datetime
-            if not diff_only: user = raw_input('Please enter your name : ')
+            if not diff_only: user = input('Please enter your name : ')
             machine_name = socket.gethostname()
             date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
             modified_tables = []
@@ -726,7 +728,7 @@ class Database:
 
             # Add data to CHANGELOG table
             if not diff_only:
-                user_description = raw_input('\nPlease describe the changes made in this merge: ')
+                user_description = input('\nPlease describe the changes made in this merge: ')
                 self.list("INSERT INTO changelog VALUES(?, ?, ?, ?, ?, ?, ?)", \
                           (None, date, str(user), machine_name, ', '.join(modified_tables), user_description,
                            os.path.basename(conflicted)))
@@ -1008,23 +1010,45 @@ class Database:
         from subprocess import call
         import socket, datetime
         
-        # Write the data to the .sql file
-        with open(self.sqlpath, 'w') as f:
-            for line in self.conn.iterdump():
-                f.write('%s\n' % line)
+        # Create the .sql file is it doesn't exist, i.e. if the Database class called a .db file initially
+        if not os.path.isfile(self.sqlpath):
+            self.sqlpath = self.dbpath.replace('.db','.sql')
+            os.system('touch {}'.format(self.sqlpath))
+            
+        # # Write the data to the .sql file
+        # with open(self.sqlpath, 'w') as f:
+        #     for line in self.conn.iterdump():
+        #         f.write('%s\n' % line)
+                
+        # Alternatively...
+        # Write the schema
+        os.system("echo '.output {}\n.schema' | sqlite3 {}".format(self.sqlpath,self.dbpath))
+        
+        #Write the table files to the tabledata directory
+        os.system("mkdir -p tabledata")
+        tables = self.query("select tbl_name from sqlite_master where type='table'")['tbl_name']
+        tablepaths = [self.sqlpath]
+        for table in tables:
+            tablepath = 'tabledata/{}.sql'.format(table)
+            tablepaths.append(tablepath)
+            with open(tablepath, 'w') as f:
+                for line in self.conn.iterdump():
+                    if line.startswith('INSERT INTO "{}"'.format(table)):
+                        f.write('%s\n' % line)
         
         # Collect name and commit message from the user and push to Github
-        user = raw_input('Please enter your name : ')
-        commit = raw_input('Briefly describe the changes you have made : ')
+        user = input('Please enter your name : ')
+        commit = input('Briefly describe the changes you have made : ')
+        print(tablepaths+[self.sqlpath])
         if user and commit:
             try:
                 call('git checkout {}'.format(branch), shell=True)
                 call('git pull origin {}'.format(branch), shell=True)
-                call('git add {}'.format(self.sqlpath), shell=True)
+                call('git add {}'.format(' '.join(tablepaths)), shell=True)
                 call('git commit -m "(via astrodbkit) {}"'.format(commit), shell=True)
-                call('git push origin {}'.format(branch), shell=True)    
+                call('git push origin {}'.format(branch), shell=True)
             except:
-                print('Sorry, could not save those changes. Make sure you are working from a git repo.')
+                print('Changes written to file but not pushed to Github. Make sure you are working from a git repo.')
         else:
             print('Sorry, astrodbkit needs a username and commit message to push changes to Guthub.')
 
