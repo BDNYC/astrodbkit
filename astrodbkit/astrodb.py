@@ -22,13 +22,6 @@ from astrodbkit import votools
 warnings.simplefilter('ignore')
 
 
-# Proper handling of input vs raw_input in Python 3 vs 2
-if sys.version_info[0] >= 3:
-    get_input = input  # Python 3
-else:
-    get_input = raw_input  # Python 2
-
-
 def create_database(dbpath):
     """
     Create a new database at the given dbpath
@@ -69,25 +62,35 @@ class Database:
         """
         if os.path.isfile(dbpath):
             
+            # Alternatively, just list the directory with the schema and .sql files and require that dbpath is the schema file, then load the tables individually
+            
             # If it is a .sql file, create an empty database in the 
             # working directory and generate the database from file
             if dbpath.endswith('.sql'):
                 self.sqlpath = dbpath
-                dbpath = dbpath[:-4]+'.db'
-                self.dbpath = dbpath
+                self.dbpath = dbpath.replace('.sql','.db')
                 
                 # If the .db file already exists, rename it with the date
-                if os.path.isfile(dbpath):
+                if os.path.isfile(self.dbpath):
                     import datetime
                     date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")
-                    os.system("mv {} {}".format(dbpath,dbpath.replace('.db',date+'.db')))
+                    os.system("mv {} {}".format(self.dbpath,self.dbpath.replace('.db',date+'.db')))
                 
-                # Make the new database from the .sql file
-                os.system("sqlite3 {} < {}".format(dbpath,self.sqlpath))
+                # Make the new database from the .sql files
+                # First the schema...
+                os.system("sqlite3 {} < {}".format(self.dbpath,self.sqlpath))
+                
+                # Then load the table data...
+                tables = os.popen('sqlite3 {} ".tables"'.format(self.dbpath)).read().replace('\n',' ').split()
+                for table in tables:
+                    os.system('sqlite3 {0} ".read tabledata/{0}.sql"'.format(table))
             
             else:
-                self.sqlpath = ''
+                self.sqlpath = dbpath.replace('.db','.sql')
                 self.dbpath = dbpath
+            
+            # Create .sql scema file if it doesn't exist
+            os.system('touch {}'.format(self.sqlpath))
                 
             # Create connection
             con = sqlite3.connect(dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
@@ -356,7 +359,7 @@ class Database:
         """
         Close the database and ask to delete the file
         """
-        delete = get_input("Do you want to delete {}? Don't worry, a new one will be generated when you run astrodb.Database() again. ([y],n) : ".format(self.dbpath))
+        delete = input("Do you want to delete {}? Don't worry, a new one will be generated when you run astrodb.Database() again. ([y],n) : ".format(self.dbpath))
         if delete=='y':
             os.system("rm {}".format(self.dbpath))
             
@@ -383,7 +386,7 @@ class Database:
         old, new = [[data[n][k] for k in columns[1:]] for n in [0, 1]]
 
         # Prompt the user for action
-        replace = get_input(
+        replace = input(
             "\nKeep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(
                     duplicate[0])).lower()
         replace = replace.strip()
@@ -397,7 +400,7 @@ class Database:
             elif replace == 'help':
                 _help()
 
-            replace = get_input(
+            replace = input(
                 "\nKeep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(
                         duplicate[0])).lower()
 
@@ -405,7 +408,7 @@ class Database:
 
             # Replace the entire old record with the new record
             if replace == 'r':
-                sure = get_input(
+                sure = input(
                     'Are you sure you want to replace record {} with record {}? [y/n] : '.format(*duplicate))
                 if sure.lower() == 'y':
                     self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[0]), verbose=False)
@@ -637,7 +640,7 @@ class Database:
 
             # Gather user data to add to CHANGELOG table
             import socket, datetime
-            if not diff_only: user = get_input('Please enter your name : ')
+            if not diff_only: user = input('Please enter your name : ')
             machine_name = socket.gethostname()
             date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
             modified_tables = []
@@ -733,7 +736,7 @@ class Database:
 
             # Add data to CHANGELOG table
             if not diff_only:
-                user_description = get_input('\nPlease describe the changes made in this merge: ')
+                user_description = input('\nPlease describe the changes made in this merge: ')
                 self.list("INSERT INTO changelog VALUES(?, ?, ?, ?, ?, ?, ?)", \
                           (None, date, str(user), machine_name, ', '.join(modified_tables), user_description,
                            os.path.basename(conflicted)))
@@ -1003,7 +1006,7 @@ class Database:
         except IOError:
             print('Could not execute: ' + SQL)
 
-    def save(self, branch='auto_db', push_github=True):
+    def save(self, branch='auto_db'):
         """
         Dump the entire contents of the database into a .sql file and push to Github
         
@@ -1011,32 +1014,50 @@ class Database:
         ==========
         branch: str
             The name of the git branch to push to
-        push_github: bool
-            Push to GitHub (default: True)
         """
         from subprocess import call
         import socket, datetime
         
-        # Write the data to the .sql file
-        with open(self.sqlpath, 'w') as f:
-            for line in self.conn.iterdump():
-                f.write('%s\n' % line)
+        # Create the .sql file is it doesn't exist, i.e. if the Database class called a .db file initially
+        if not os.path.isfile(self.sqlpath):
+            self.sqlpath = self.dbpath.replace('.db','.sql')
+            os.system('touch {}'.format(self.sqlpath))
+            
+        # # Write the data to the .sql file
+        # with open(self.sqlpath, 'w') as f:
+        #     for line in self.conn.iterdump():
+        #         f.write('%s\n' % line)
+                
+        # Alternatively...
+        # Write the schema
+        os.system("echo '.output {}\n.schema' | sqlite3 {}".format(self.sqlpath,self.dbpath))
         
-        # Collect name and commit message from the user and push to GitHub
-        if push_github:
-            user = get_input('Please enter your name : ')
-            commit = get_input('Briefly describe the changes you have made : ')
-            if user and commit:
-                try:
-                    call('git checkout {}'.format(branch), shell=True)
-                    call('git pull origin {}'.format(branch), shell=True)
-                    call('git add {}'.format(self.sqlpath), shell=True)
-                    call('git commit -m "(via astrodbkit) {}"'.format(commit), shell=True)
-                    call('git push origin {}'.format(branch), shell=True)
-                except:
-                    print('Sorry, could not save those changes. Make sure you are working from a git repo.')
-            else:
-                print('Sorry, astrodbkit needs a username and commit message to push changes to Guthub.')
+        # Write the table files to the tabledata directory
+        os.system("mkdir -p tabledata")
+        tables = self.query("select tbl_name from sqlite_master where type='table'")['tbl_name']
+        tablepaths = [self.sqlpath]
+        for table in tables:
+            tablepath = 'tabledata/{}.sql'.format(table)
+            tablepaths.append(tablepath)
+            with open(tablepath, 'w') as f:
+                for line in self.conn.iterdump():
+                    if line.startswith('INSERT INTO "{}"'.format(table)):
+                        f.write('%s\n' % line)
+        
+        # Collect name and commit message from the user and push to Github
+        user = input('Please enter your name : ')
+        commit = input('Briefly describe the changes you have made : ')
+        if user and commit:
+            try:
+                call('git checkout {}'.format(branch), shell=True)
+                call('git pull origin {}'.format(branch), shell=True)
+                call('git add {}'.format(' '.join(tablepaths)), shell=True)
+                call('git commit -m "(via astrodbkit) {}"'.format(commit), shell=True)
+                call('git push origin {}'.format(branch), shell=True)
+            except:
+                print('Changes written to file but not pushed to Github. Make sure you are working from a git repo.')
+        else:
+            print('Sorry, astrodbkit needs a username and commit message to push changes to Guthub.')
 
     def schema(self, table):
         """
@@ -1200,20 +1221,13 @@ class Database:
                 create_txt = "CREATE TABLE {0} ({1}".format(table, ', '.join(
                         ['{} {} {}'.format(c, t, r) for c, t, r in zip(columns, types, constraints)]))
                 create_txt += ', PRIMARY KEY({}))'.format(', '.join([elem for elem in pk]))
-                # print(create_txt.replace(',', ',\n'))
+                print(create_txt.replace(',', ',\n'))
                 self.list(create_txt)
 
                 # Populate the new table and drop the old one
                 old_columns = [c for c in self.query("PRAGMA table_info(TempOldTable)", unpack=True)[1] if c in columns]
                 self.list("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable".format(table, ','.join(old_columns)))
-
-                # Check for and add any foreign key constraints
-                t = self.query('PRAGMA foreign_key_list(TempOldTable)', fmt='table')
-                if not isinstance(t, type(None)):
-                    self.list("DROP TABLE TempOldTable")
-                    self.add_foreign_key(table, t['table'].tolist(), t['from'].tolist(), t['to'].tolist())
-                else:
-                    self.list("DROP TABLE TempOldTable")
+                self.list("DROP TABLE TempOldTable")
 
             # If the table does not exist and new_table is True, create it
             elif table not in tables and new_table:
@@ -1275,8 +1289,8 @@ class Database:
 
         try:
             # Rename the old table and create a new one
-            self.list("DROP TABLE IF EXISTS TempOldTable_foreign")
-            self.list("ALTER TABLE {0} RENAME TO TempOldTable_foreign".format(table))
+            self.list("DROP TABLE IF EXISTS TempOldTable")
+            self.list("ALTER TABLE {0} RENAME TO TempOldTable".format(table))
 
             # Re-create the table specifying the FOREIGN KEY
             sqltxt = "CREATE TABLE {0} ({1}".format(table, ', '.join(['{} {} {}'.format(c, t, r)
@@ -1284,17 +1298,17 @@ class Database:
             sqltxt += ', PRIMARY KEY({})'.format(', '.join([elem for elem in pk_names]))
             if isinstance(key_child, type(list())):
                 for kc, p, kp in zip(key_child, parent, key_parent):
-                    sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(kc, p, kp)
+                    sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2})'.format(kc, p, kp)
             else:
-                sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(key_child, parent, key_parent)
+                sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2})'.format(key_child, parent, key_parent)
             sqltxt += ' )'
 
             self.list(sqltxt)
 
             # Populate the new table and drop the old one
-            old_columns = [c for c in self.query("PRAGMA table_info(TempOldTable_foreign)", unpack=True)[1] if c in columns]
-            self.list("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable_foreign".format(table, ','.join(old_columns)))
-            self.list("DROP TABLE TempOldTable_foreign")
+            old_columns = [c for c in self.query("PRAGMA table_info(TempOldTable)", unpack=True)[1] if c in columns]
+            self.modify("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable".format(table, ','.join(old_columns)))
+            self.list("DROP TABLE TempOldTable")
 
             if verbose:
                 print('Successfully added foreign key.')
@@ -1304,7 +1318,7 @@ class Database:
         except:
             print('Error attempting to add foreign key.')
             self.list("DROP TABLE IF EXISTS {0}".format(table))
-            self.list("ALTER TABLE TempOldTable_foreign RENAME TO {0}".format(table))
+            self.list("ALTER TABLE TempOldTable RENAME TO {0}".format(table))
 
         # Reactivate foreign keys
         self.list('PRAGMA foreign_keys=ON')
