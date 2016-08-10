@@ -16,6 +16,12 @@ from . import votools
 
 warnings.simplefilter('ignore')
 
+# Set get_input to be either raw_input or input depending on the python version
+if sys.version_info[0] >= 3:
+    get_input = input  # Python 3
+else:
+    get_input = raw_input
+
 
 def create_database(dbpath):
     """
@@ -354,7 +360,7 @@ class Database:
         old, new = [[data[n][k] for k in columns[1:]] for n in [0, 1]]
 
         # Prompt the user for action
-        replace = raw_input(
+        replace = get_input(
             "\nKeep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(
                     duplicate[0])).lower()
         replace = replace.strip()
@@ -368,7 +374,7 @@ class Database:
             elif replace == 'help':
                 _help()
 
-            replace = raw_input(
+            replace = get_input(
                 "\nKeep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(
                         duplicate[0])).lower()
 
@@ -376,7 +382,7 @@ class Database:
 
             # Replace the entire old record with the new record
             if replace == 'r':
-                sure = raw_input(
+                sure = get_input(
                     'Are you sure you want to replace record {} with record {}? [y/n] : '.format(*duplicate))
                 if sure.lower() == 'y':
                     self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[0]), verbose=False)
@@ -608,7 +614,7 @@ class Database:
 
             # Gather user data to add to CHANGELOG table
             import socket, datetime
-            if not diff_only: user = raw_input('Please enter your name : ')
+            if not diff_only: user = get_input('Please enter your name : ')
             machine_name = socket.gethostname()
             date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
             modified_tables = []
@@ -704,7 +710,7 @@ class Database:
 
             # Add data to CHANGELOG table
             if not diff_only:
-                user_description = raw_input('\nPlease describe the changes made in this merge: ')
+                user_description = get_input('\nPlease describe the changes made in this merge: ')
                 self.list("INSERT INTO changelog VALUES(?, ?, ?, ?, ?, ?, ?)", \
                           (None, date, str(user), machine_name, ', '.join(modified_tables), user_description,
                            os.path.basename(conflicted)))
