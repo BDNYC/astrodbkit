@@ -43,6 +43,7 @@ def test_sqlquery():
 
 def test_schema():
     bdnyc_db.schema('sources')
+    empty_db.schema('sources')
 
 
 def test_table():
@@ -56,7 +57,7 @@ def test_add_data():
     data = list()
     data.append(['ra', 'dec', 'shortname'])
     data.append([12, -12, 'fakesource'])
-    empty_db.add_data(data, 'sources')
+    empty_db.add_data(data, 'sources', verbose=True)
 
 
 def test_add_foreign_key():

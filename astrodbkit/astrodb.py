@@ -150,10 +150,11 @@ class Database:
 
             # Convert data dtypes to those of the existing table
             for col in data.colnames:
+                if verbose: print('Converting {} -> {}'.format(data[col].dtype, new_records[col].dtype))  # TODO: DELETE ME
                 try:
                     temp = data[col].astype(new_records[col].dtype)
                     data.replace_column(col, temp)
-                except (KeyError,AttributeError):
+                except (KeyError, AttributeError):
                     continue
 
             # If a row contains photometry for multiple bands, use the *multiband argument and execute this
@@ -221,6 +222,9 @@ class Database:
                 for n, col in enumerate(new_rec):
                     if type(col) == np.ma.core.MaskedConstant:
                         new_rec[n] = None
+                if verbose:  # TODO: DELETE ME
+                    print(new_rec)
+                    print([type(s) for s in new_rec])
                 self.modify("INSERT INTO {} VALUES({})".format(table, ','.join('?' * len(columns))), new_rec,
                             verbose=verbose)
                 new_records[N]['id'] = rowids[N]
@@ -455,7 +459,9 @@ class Database:
         """
         data_tables = {}
 
-        for table in ['sources'] + [t for t in zip(*self.list("SELECT * FROM sqlite_master WHERE type='table'"))[1] if
+        t = self.query("SELECT * FROM sqlite_master WHERE type='table'", fmt='table')
+        all_tables = t['name'].tolist()
+        for table in ['sources'] + [t for t in all_tables if
                                     t not in ['sources', 'sqlite_sequence']]:
 
             try:
@@ -1016,7 +1022,10 @@ class Database:
 
         """
         # Get list of columns to search and format properly
-        all_columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
+        t = self.query("PRAGMA table_info({})".format(table), unpack=True, fmt='table')
+        all_columns = t['name'].tolist()
+        types = t['type'].tolist()
+        # all_columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
         columns = columns or all_columns
         columns = np.asarray([columns] if isinstance(columns, str) else columns)
 
@@ -1029,6 +1038,10 @@ class Database:
             print("'{}' is not a column in the {} table.".format(col, table.upper()))
 
         # Coordinate search
+        if sys.version_info[0] == 2:
+            str_check = (str, unicode)
+        else:
+            str_check = str
         if isinstance(criterion, (tuple, list, np.ndarray)):
             try:
                 q = "SELECT * FROM {} WHERE ra BETWEEN ".format(table) \
@@ -1041,7 +1054,7 @@ class Database:
                 print("Could not search {} table by coordinates {}. Try again.".format(table.upper(), criterion))
 
         # Text string search of columns with 'TEXT' data type
-        elif isinstance(criterion, (str, unicode)) and any(columns) and 'TEXT' in types:
+        elif isinstance(criterion, str_check) and any(columns) and 'TEXT' in types:
             try:
                 q = "SELECT * FROM {} WHERE {}".format(table, ' OR '.join([r"REPLACE(" + c + r",' ','') like '%" \
                      + criterion.replace(' ', '') + r"%'" for c, t in zip(columns,types[np.in1d(columns, all_columns)]) \
@@ -1131,7 +1144,8 @@ class Database:
             goodtogo = False
 
         if goodtogo:
-            tables = self.query("SELECT name FROM sqlite_master", unpack=True)[0]
+            t = self.query("SELECT name FROM sqlite_master", unpack=True, fmt='table')
+            tables = t['name'].tolist()
 
             # If the table exists, modify the columns
             if table in tables and not new_table:
@@ -1891,5 +1905,6 @@ def _autofill_spec_record(record):
     return record
 
 
+# TODO: Consider reverting U64, U128 to original S64, S128 (Unicode to bytestring)
 type_dict = {'INTEGER': np.dtype('int64'), 'REAL': np.dtype('float64'), 'TEXT': np.dtype('S64'),
              'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('S128'), 'BOOLEAN': np.dtype('bool')}
