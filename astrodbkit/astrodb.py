@@ -79,7 +79,9 @@ class Database:
 
             # Create connection
             con = sqlite3.connect(dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
-            con.text_factory = str
+            con.text_factory = sqlite3.OptimizedUnicode
+            # con.text_factory = str  # Original
+            # con.text_factory = lambda x: x.decode('latin-1')
             self.conn = con
             self.close = self.conn.close
             self.list = con.cursor().execute
@@ -150,7 +152,6 @@ class Database:
 
             # Convert data dtypes to those of the existing table
             for col in data.colnames:
-                if verbose: print('Converting {} -> {}'.format(data[col].dtype, new_records[col].dtype))  # TODO: DELETE ME
                 try:
                     temp = data[col].astype(new_records[col].dtype)
                     data.replace_column(col, temp)
@@ -220,13 +221,12 @@ class Database:
                 new_rec = list(new_rec)
                 new_rec[0] = rowids[N]
                 for n, col in enumerate(new_rec):
+                    if type(col) == np.int64 and sys.version_info[0] >= 3:
+                        # Fix for Py3 and sqlite3 issue with numpy types
+                        new_rec[n] = col.item()
                     if type(col) == np.ma.core.MaskedConstant:
                         new_rec[n] = None
-                if verbose:  # TODO: DELETE ME
-                    print(new_rec)
-                    print([type(s) for s in new_rec])
-                self.modify("INSERT INTO {} VALUES({})".format(table, ','.join('?' * len(columns))), new_rec,
-                            verbose=verbose)
+                self.modify("INSERT INTO {} VALUES({})".format(table, ','.join('?' * len(columns))), new_rec, verbose=verbose)
                 new_records[N]['id'] = rowids[N]
 
             # print(a table of the new records or bad news
@@ -578,7 +578,8 @@ class Database:
 
         """
         try:
-            ids = self.query("SELECT id FROM {}".format(table), unpack=True)[0]
+            t = self.query("SELECT id FROM {}".format(table), unpack=True, fmt='table')
+            ids = t['id']
             all_ids = np.array(range(1, max(ids)))
         except TypeError:
             ids = None
@@ -1133,7 +1134,7 @@ class Database:
                 if elem == 'id':
                     continue
                 else:
-                    ind = np.where(columns == elem)[0]
+                    ind, = np.where(columns == elem)
                     constraints[ind] = 'UNIQUE NOT NULL'
         else:
             pk = ['id']
@@ -1225,9 +1226,10 @@ class Database:
                 constraints.append('')
 
         # Set PRIMARY KEY columns
-        for i in np.where(pk >= 1)[0]:
+        ind, = np.where(pk >= 1)
+        for i in ind:
             constraints[i] += ' UNIQUE'  # Add UNIQUE constraint to primary keys
-        pk_names = columns[np.where(pk > 0)[0]]
+        pk_names = columns[ind]
 
         try:
             # Rename the old table and create a new one
@@ -1248,7 +1250,8 @@ class Database:
             self.list(sqltxt)
 
             # Populate the new table and drop the old one
-            old_columns = [c for c in self.query("PRAGMA table_info(TempOldTable_foreign)", unpack=True)[1] if c in columns]
+            tempdata = self.query("PRAGMA table_info(TempOldTable_foreign)", fmt='table')
+            old_columns = [c for c in tempdata['name'] if c in columns]
             self.list("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable_foreign".format(table, ','.join(old_columns)))
             self.list("DROP TABLE TempOldTable_foreign")
 
@@ -1261,6 +1264,7 @@ class Database:
             print('Error attempting to add foreign key.')
             self.list("DROP TABLE IF EXISTS {0}".format(table))
             self.list("ALTER TABLE TempOldTable_foreign RENAME TO {0}".format(table))
+            raise sqlite3.IntegrityError('Failed to add foreign key')
 
         # Reactivate foreign keys
         self.list('PRAGMA foreign_keys=ON')
@@ -1905,6 +1909,5 @@ def _autofill_spec_record(record):
     return record
 
 
-# TODO: Consider reverting U64, U128 to original S64, S128 (Unicode to bytestring)
 type_dict = {'INTEGER': np.dtype('int64'), 'REAL': np.dtype('float64'), 'TEXT': np.dtype('S64'),
-             'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('S128'), 'BOOLEAN': np.dtype('bool')}
+             'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('S164'), 'BOOLEAN': np.dtype('bool')}

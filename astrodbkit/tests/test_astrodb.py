@@ -28,11 +28,11 @@ def test_load_empty():
 
 
 def test_search(): 
-    bdnyc_db.search('1234','sources')
+    bdnyc_db.search('2MASS', 'sources')
 
 
 def test_inventory():
-    bdnyc_db.inventory(825)
+    bdnyc_db.inventory(1)
 
 
 def test_sqlquery():
@@ -51,13 +51,32 @@ def test_table():
     types = ['INTEGER', 'REAL', 'REAL', 'TEXT', 'INTEGER']
     constraints = ['NOT NULL UNIQUE', '', '', '', '']
     empty_db.table('new_sources', columns, types, constraints, new_table=True)
+    t = empty_db.query("PRAGMA table_info(new_sources)", fmt='table')
+    print(t)
+    assert sorted(columns) == sorted(t['name'])
 
 
-def test_add_data():
+def test_add_data_empty():
+    t1 = empty_db.query('SELECT * FROM sources', fmt='array')
+
+    if isinstance(t1, type(None)):
+        len_t1 = 0
+    else:
+        len_t1 = len(t1)
+
     data = list()
     data.append(['ra', 'dec', 'shortname'])
     data.append([12, -12, 'fakesource'])
     empty_db.add_data(data, 'sources', verbose=True)
+
+    t2 = empty_db.query('SELECT * FROM sources', fmt='array')
+    assert len(t2) == len_t1 + 1
+
+
+def test_new_ids():
+    available = bdnyc_db._lowest_rowids('sources', 10)
+    t = bdnyc_db.query('SELECT id FROM sources')
+    assert available not in t
 
 
 def test_add_foreign_key():
@@ -69,7 +88,7 @@ def test_foreign_key_support():
     data.append(['ra', 'dec', 'shortname', 'source_id'])
     data.append([12, -12, 'fakesource', 9999])
     with pytest.raises(IntegrityError):
-        empty_db.add_data(data, 'new_sources')  # Foreign key error
+        empty_db.add_data(data, 'new_sources')  # Foreign key error expected
 
 
 def test_lookup():
