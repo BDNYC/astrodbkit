@@ -80,8 +80,6 @@ class Database:
             # Create connection
             con = sqlite3.connect(dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
             con.text_factory = sqlite3.OptimizedUnicode
-            # con.text_factory = str  # Original
-            # con.text_factory = lambda x: x.decode('latin-1')
             self.conn = con
             self.close = self.conn.close
             self.list = con.cursor().execute
@@ -1026,7 +1024,6 @@ class Database:
         t = self.query("PRAGMA table_info({})".format(table), unpack=True, fmt='table')
         all_columns = t['name'].tolist()
         types = t['type'].tolist()
-        # all_columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
         columns = columns or all_columns
         columns = np.asarray([columns] if isinstance(columns, str) else columns)
 
