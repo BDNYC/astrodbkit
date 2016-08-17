@@ -1,9 +1,12 @@
 import pytest
 import tempfile
-import os
+import os, sys
 from astropy.utils.data import download_file
 from .. import astrodb
 from sqlite3 import IntegrityError
+import io
+
+filename = os.path.join(tempfile.mkdtemp(), 'empty_db.db')
 
 
 def setup_module(module):
@@ -12,7 +15,6 @@ def setup_module(module):
     except:
         db_path = download_file("http://github.com/BDNYC/BDNYCdb/raw/master/BDNYCv1.0.db")
     module.bdnyc_db = astrodb.Database(db_path)
-    filename = os.path.join(tempfile.mkdtemp(), 'empty_db.db')
     astrodb.create_database(filename)
     module.empty_db = astrodb.Database(filename)
 
@@ -65,8 +67,8 @@ def test_add_data_empty():
         len_t1 = len(t1)
 
     data = list()
-    data.append(['ra', 'dec', 'shortname'])
-    data.append([12, -12, 'fakesource'])
+    data.append(['ra', 'dec', 'shortname', 'comments'])
+    data.append([12, -12, 'fakesource', ''])
     empty_db.add_data(data, 'sources', verbose=True)
 
     t2 = empty_db.query('SELECT * FROM sources', fmt='array')
@@ -95,12 +97,27 @@ def test_lookup():
     bdnyc_db.lookup([1, '2MASS'], 'sources')
 
 
-@pytest.mark.xfail
-def test_clean_up():
-    assert False
+def test_clean_up(monkeypatch):
+    data = list()
+    data.append(['ra', 'dec', 'shortname', 'source_id'])
+    data.append([12, -12, 'fakesource', 1])
+    data.append([12, -12, 'fakesource2', 1])
+
+    # Fake user input
+    inputs = ['r', 'y']
+    input_generator = (i for i in inputs)
+    monkeypatch.setattr('astrodbkit.astrodb.get_input', lambda prompt: next(input_generator))
+
+    empty_db.add_data(data, 'new_sources', verbose=True)  # This internally calls clean_up
+
+    t = empty_db.query('SELECT * FROM new_sources', fmt='table')
+    assert len(t) == 1
+
 
 @pytest.mark.xfail
 def test_merge():
+    empty_db.modify('DROP TABLE new_sources')
+    bdnyc_db.merge(filename, 'sources')
     assert False
 
 @pytest.mark.xfail

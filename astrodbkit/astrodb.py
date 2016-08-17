@@ -224,10 +224,10 @@ class Database:
                         new_rec[n] = col.item()
                     if type(col) == np.ma.core.MaskedConstant:
                         new_rec[n] = None
-                self.modify("INSERT INTO {} VALUES({})".format(table, ','.join('?' * len(columns))), new_rec, verbose=verbose)
+                self.modify("INSERT INTO {} VALUES({})".format(table, ','.join('?' * len(columns))), new_rec)
                 new_records[N]['id'] = rowids[N]
 
-            # print(a table of the new records or bad news
+            # print a table of the new records or bad news
             if new_records:
                 pprint(new_records, names=columns,
                        title="{} new records added to the {} table.".format(len(new_records), table.upper()))
@@ -235,15 +235,12 @@ class Database:
                 print('No new records added to the {} table. Please check your input: {}'.format(table, entry))
 
             # Run table clean up
-            try:
-                self.clean_up(table)
-            except:
-                print('Could not run clean_up() method.')
+            self.clean_up(table, verbose)
 
         else:
             print('Please check your input: {}'.format(entry))
 
-    def clean_up(self, table):
+    def clean_up(self, table, verbose=False):
         """
         Removes exact duplicates, blank records or data without a *source_id* from the specified **table**.
         Then finds possible duplicates and prompts for conflict resolution.
@@ -257,7 +254,7 @@ class Database:
         # Get the table info and all the records
         metadata = self.query("PRAGMA table_info({})".format(table), fmt='table')
         columns, types, required = [np.array(metadata[n]) for n in ['name', 'type', 'notnull']]
-        records = self.query("SELECT * FROM {}".format(table), fmt='table', use_converters=False)
+        # records = self.query("SELECT * FROM {}".format(table), fmt='table', use_converters=False)
         ignore = self.query("SELECT * FROM ignore WHERE tablename LIKE ?", (table,))
         duplicate, command = [1], ''
 
@@ -286,47 +283,48 @@ class Database:
         while any(duplicate):
             # Pull out duplicates one by one
             if 'source_id' not in columns:  # Check if there is a source_id in the columns
-                SQL = "SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.id=t2.id WHERE {1}{2}{3}" \
-                    .format(table,
-                            ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]),
-                            (' AND ' + ' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))"
-                                                    .format(','.join(map(str, [id1, id2]))) for id1, id2
-                                                     in zip(ignore['id1'], ignore['id2'])]))
-                            if any(ignore) else '',
-                            (' AND ' + ' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))"
-                                                    .format(','.join(map(str, ni))) for ni in new_ignore]))
-                            if new_ignore else '')
+                SQL = "SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.id=t2.id WHERE ".format(table)
             else:
                 SQL = "SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.source_id=t2.source_id " \
-                      "WHERE t1.id!=t2.id AND {1}{2}{3}" \
-                    .format(table,
-                            ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]),
-                            (' AND ' + ' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))"
-                                                    .format(','.join(map(str, [id1, id2]))) for id1, id2
-                                                     in zip(ignore['id1'], ignore['id2'])]))
-                            if any(ignore) else '',
-                            (' AND ' + ' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))"
-                                                    .format(','.join(map(str, ni))) for ni in new_ignore]))
-                            if new_ignore else '')
+                      "WHERE t1.id!=t2.id AND ".format(table)
+
+            if any(req_keys):
+                SQL += ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]) + ' AND '
+
+            if any(ignore):
+                SQL += ' AND '.join(
+                    ["(t1.id NOT IN ({0}) AND t2.id NOT IN ({0}))".format(','.join(map(str, [id1, id2])))
+                        for id1, id2 in zip(ignore['id1'], ignore['id2'])]
+                    if any(ignore) else '') + ' AND '
+
+            if any(new_ignore):
+                SQL += ' AND '.join(
+                    ["(t1.id NOT IN ({0}) AND t2.id NOT IN ({0}))".format(','.join(map(str, ni)))
+                     for ni in new_ignore] if new_ignore else '') + ' AND '
 
             # Clean up empty WHERE at end if it's present (eg, for empty req_keys, ignore, and new_ignore)
             if SQL[-6:] == 'WHERE ':
                 SQL = SQL[:-6]
 
+            # Clean up hanging AND if present
+            if SQL[-5:] == ' AND ':
+                SQL = SQL[:-5]
+
+            if verbose: print('\nSearching for duplicates with: {}\n'.format(SQL))
+
             duplicate = self.query(SQL, fetch='one')
 
             # Compare potential duplicates and prompt user for action on each
             try:
-
                 # Run record matches through comparison and return the command
                 command = self._compare_records(table, duplicate)
 
-                # Add acceptible duplicates to ignore list or abort
+                # Add acceptable duplicates to ignore list or abort
                 if command == 'keep':
                     new_ignore.append([duplicate[0], duplicate[1]])
                     self.list("INSERT INTO ignore VALUES(?,?,?,?)", (None, duplicate[0], duplicate[1], table.lower()))
                 elif command == 'undo':
-                    pass  # Add this functionality!
+                    pass  # TODO: Add this functionality!
                 elif command == 'abort':
                     break
                 else:
@@ -355,9 +353,13 @@ class Database:
             The allowed options: 'r' for replace, 'c' for complete, 'k' for keep, 'sql' for raw SQL input.
 
         """
-        # print(the old and new records suspectred of being duplicates
+        # print the old and new records suspected of being duplicates
+        verbose = True
+        if duplicate[0] == duplicate[1]:  # No need to display if no duplicates were found
+            verbose = False
+
         data = self.query("SELECT * FROM {} WHERE id IN ({})".format(table, ','.join(map(str, duplicate))), \
-                          fmt='table', verbose=True, use_converters=False)
+                          fmt='table', verbose=verbose, use_converters=False)
         columns = data.colnames[1:]
         old, new = [[data[n][k] for k in columns[1:]] for n in [0, 1]]
 
@@ -625,13 +627,15 @@ class Database:
             modified_tables = []
 
             # Merge table by table, starting with SOURCES
-            tables = tables or ['sources'] + [t for t in zip(*self.list(
+            tables = [tables] or ['sources'] + [t for t in zip(*self.list(
                 "SELECT * FROM sqlite_master WHERE name NOT LIKE '%Backup%' AND name!='sqlite_sequence' AND type='table'{}".format(
                     " AND name IN ({})".format("'" + "','".join(tables) + "'") if tables else '')))[1] if
                                               t != 'sources']
             for table in tables:
                 # Get column names and data types from master table and column names from conflicted table
-                columns, types, constraints = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:4]
+                metadata = self.query("PRAGMA table_info({})".format(table), fmt='table')
+                columns, types, constraints = [np.array(metadata[n]) for n in ['name', 'type', 'notnull']]
+                # columns, types, constraints = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:4]
                 conflicted_cols = con.query("PRAGMA table_info({})".format(table), unpack=True)[1]
 
                 if any([i not in columns for i in conflicted_cols]):
@@ -645,6 +649,7 @@ class Database:
                     if any([i not in conflicted_cols for i in columns]):
                         con.modify("DROP TABLE IF EXISTS Conflicted_{0}".format(table))
                         con.modify("ALTER TABLE {0} RENAME TO Conflicted_{0}".format(table))
+                        # TODO: Update to allow multiple primary and foreign keys
                         con.modify("CREATE TABLE {0} ({1})".format(table, ', '.join( \
                                 ['{} {} {}{}'.format(c, t, r, ' UNIQUE PRIMARY KEY' if c == 'id' else '') \
                                  for c, t, r in zip(columns, types, constraints * ['NOT NULL'])])))
@@ -956,16 +961,15 @@ class Database:
                     # Unpack the results if necessary (data types are not preserved)
                     if unpack: array = np.array(zip(*array))
 
-                    # print(on screen
+                    # print on screen
                     if verbose: pprint(table)
 
-                    # print(the results to file
+                    # print the results to file
                     if export:
                         # If .vot or .xml, assume VOTable export with votools
                         if export.lower().endswith('.xml') or export.lower().endswith('.vot'):
                             votools.dict_tovot(dictionary, export)
-
-                        # Otherwise print(as ascii
+                        # Otherwise print as ascii
                         else:
                             ii.write(table, export, Writer=ii.FixedWidthTwoLine, fill_values=[('None', '-')])
 
