@@ -1486,8 +1486,10 @@ def convert_spectrum(File):
 
     """
     spectrum, header = '', ''
+    if isinstance(File, type(b'')):  # Decode if needed (ie, for Python 3)
+        File = File.decode('utf-8')
 
-    if isinstance(File, str):
+    if isinstance(File, (str, type(u''))):
 
         # Convert variable path to absolute path
         if File.startswith('$'):
@@ -1498,7 +1500,10 @@ def convert_spectrum(File):
         if File.endswith('.fits'):
             try:
                 # Get the data
-                spectrum, header = pf.getdata(File, cache=True, header=True)
+                try:
+                    spectrum, header = pf.getdata(File, cache=True, header=True)
+                except:
+                    spectrum, header = pf.getdata(File, cache=False, header=True)
                 
                 # Check the key type
                 KEY_TYPE = ['CTYPE1']

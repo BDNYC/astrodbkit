@@ -104,14 +104,14 @@ def test_clean_up(monkeypatch):
     data.append([12, -12, 'fakesource2', 1])
 
     # Fake user input
-    inputs = ['r', 'y']
+    inputs = ['help', 'r', 'y']
     input_generator = (i for i in inputs)
     monkeypatch.setattr('astrodbkit.astrodb.get_input', lambda prompt: next(input_generator))
 
     empty_db.add_data(data, 'new_sources', verbose=True)  # This internally calls clean_up
 
     t = empty_db.query('SELECT * FROM new_sources', fmt='table')
-    assert len(t) == 1
+    assert len(t) == 1  # Only one record should have been kept
 
 
 @pytest.mark.xfail
@@ -120,10 +120,17 @@ def test_merge():
     bdnyc_db.merge(filename, 'sources')
     assert False
 
-@pytest.mark.xfail
-def test_output_spectrum():
-    assert False
 
-@pytest.mark.xfail
+def test_output_spectrum():
+    t = bdnyc_db.query('SELECT spectrum FROM spectra LIMIT 1', fmt='array', fetch='one')
+    try:
+        w, f = t[0].data
+    except ValueError:
+        w, f, e = t[0].data
+    assert any(w)  # extracted wavelength
+    assert any(f)  # extracted flux
+
+
 def test_plot_spectrum():
-    assert False
+    t = bdnyc_db.query('SELECT id FROM spectra LIMIT 1', fmt='array', fetch='one')
+    bdnyc_db.plot_spectrum(t[0])
