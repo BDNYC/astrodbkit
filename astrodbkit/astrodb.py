@@ -16,6 +16,12 @@ from . import votools
 
 warnings.simplefilter('ignore')
 
+# Set get_input to be either raw_input or input depending on the python version
+if sys.version_info[0] >= 3:
+    get_input = input  # Python 3
+else:
+    get_input = raw_input
+
 
 def create_database(dbpath):
     """
@@ -73,7 +79,7 @@ class Database:
 
             # Create connection
             con = sqlite3.connect(dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
-            con.text_factory = str
+            con.text_factory = sqlite3.OptimizedUnicode
             self.conn = con
             self.close = self.conn.close
             self.list = con.cursor().execute
@@ -147,7 +153,7 @@ class Database:
                 try:
                     temp = data[col].astype(new_records[col].dtype)
                     data.replace_column(col, temp)
-                except (KeyError,AttributeError):
+                except (KeyError, AttributeError):
                     continue
 
             # If a row contains photometry for multiple bands, use the *multiband argument and execute this
@@ -213,13 +219,15 @@ class Database:
                 new_rec = list(new_rec)
                 new_rec[0] = rowids[N]
                 for n, col in enumerate(new_rec):
+                    if type(col) == np.int64 and sys.version_info[0] >= 3:
+                        # Fix for Py3 and sqlite3 issue with numpy types
+                        new_rec[n] = col.item()
                     if type(col) == np.ma.core.MaskedConstant:
                         new_rec[n] = None
-                self.modify("INSERT INTO {} VALUES({})".format(table, ','.join('?' * len(columns))), new_rec,
-                            verbose=verbose)
+                self.modify("INSERT INTO {} VALUES({})".format(table, ','.join('?' * len(columns))), new_rec)
                 new_records[N]['id'] = rowids[N]
 
-            # print(a table of the new records or bad news
+            # print a table of the new records or bad news
             if new_records:
                 pprint(new_records, names=columns,
                        title="{} new records added to the {} table.".format(len(new_records), table.upper()))
@@ -227,15 +235,12 @@ class Database:
                 print('No new records added to the {} table. Please check your input: {}'.format(table, entry))
 
             # Run table clean up
-            try:
-                self.clean_up(table)
-            except:
-                print('Could not run clean_up() method.')
+            self.clean_up(table, verbose)
 
         else:
             print('Please check your input: {}'.format(entry))
 
-    def clean_up(self, table):
+    def clean_up(self, table, verbose=False):
         """
         Removes exact duplicates, blank records or data without a *source_id* from the specified **table**.
         Then finds possible duplicates and prompts for conflict resolution.
@@ -249,7 +254,7 @@ class Database:
         # Get the table info and all the records
         metadata = self.query("PRAGMA table_info({})".format(table), fmt='table')
         columns, types, required = [np.array(metadata[n]) for n in ['name', 'type', 'notnull']]
-        records = self.query("SELECT * FROM {}".format(table), fmt='table', use_converters=False)
+        # records = self.query("SELECT * FROM {}".format(table), fmt='table', use_converters=False)
         ignore = self.query("SELECT * FROM ignore WHERE tablename LIKE ?", (table,))
         duplicate, command = [1], ''
 
@@ -278,47 +283,48 @@ class Database:
         while any(duplicate):
             # Pull out duplicates one by one
             if 'source_id' not in columns:  # Check if there is a source_id in the columns
-                SQL = "SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.id=t2.id WHERE {1}{2}{3}" \
-                    .format(table,
-                            ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]),
-                            (' AND ' + ' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))"
-                                                    .format(','.join(map(str, [id1, id2]))) for id1, id2
-                                                     in zip(ignore['id1'], ignore['id2'])]))
-                            if any(ignore) else '',
-                            (' AND ' + ' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))"
-                                                    .format(','.join(map(str, ni))) for ni in new_ignore]))
-                            if new_ignore else '')
+                SQL = "SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.id=t2.id WHERE ".format(table)
             else:
                 SQL = "SELECT t1.id, t2.id FROM {0} t1 JOIN {0} t2 ON t1.source_id=t2.source_id " \
-                      "WHERE t1.id!=t2.id AND {1}{2}{3}" \
-                    .format(table,
-                            ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]),
-                            (' AND ' + ' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))"
-                                                    .format(','.join(map(str, [id1, id2]))) for id1, id2
-                                                     in zip(ignore['id1'], ignore['id2'])]))
-                            if any(ignore) else '',
-                            (' AND ' + ' AND '.join(["(t1.id NOT IN ({0}) and t2.id NOT IN ({0}))"
-                                                    .format(','.join(map(str, ni))) for ni in new_ignore]))
-                            if new_ignore else '')
+                      "WHERE t1.id!=t2.id AND ".format(table)
+
+            if any(req_keys):
+                SQL += ' AND '.join(['t1.{0}=t2.{0}'.format(i) for i in req_keys]) + ' AND '
+
+            if any(ignore):
+                SQL += ' AND '.join(
+                    ["(t1.id NOT IN ({0}) AND t2.id NOT IN ({0}))".format(','.join(map(str, [id1, id2])))
+                        for id1, id2 in zip(ignore['id1'], ignore['id2'])]
+                    if any(ignore) else '') + ' AND '
+
+            if any(new_ignore):
+                SQL += ' AND '.join(
+                    ["(t1.id NOT IN ({0}) AND t2.id NOT IN ({0}))".format(','.join(map(str, ni)))
+                     for ni in new_ignore] if new_ignore else '') + ' AND '
 
             # Clean up empty WHERE at end if it's present (eg, for empty req_keys, ignore, and new_ignore)
             if SQL[-6:] == 'WHERE ':
                 SQL = SQL[:-6]
 
+            # Clean up hanging AND if present
+            if SQL[-5:] == ' AND ':
+                SQL = SQL[:-5]
+
+            if verbose: print('\nSearching for duplicates with: {}\n'.format(SQL))
+
             duplicate = self.query(SQL, fetch='one')
 
             # Compare potential duplicates and prompt user for action on each
             try:
-
                 # Run record matches through comparison and return the command
                 command = self._compare_records(table, duplicate)
 
-                # Add acceptible duplicates to ignore list or abort
+                # Add acceptable duplicates to ignore list or abort
                 if command == 'keep':
                     new_ignore.append([duplicate[0], duplicate[1]])
                     self.list("INSERT INTO ignore VALUES(?,?,?,?)", (None, duplicate[0], duplicate[1], table.lower()))
                 elif command == 'undo':
-                    pass  # Add this functionality!
+                    pass  # TODO: Add this functionality!
                 elif command == 'abort':
                     break
                 else:
@@ -347,14 +353,18 @@ class Database:
             The allowed options: 'r' for replace, 'c' for complete, 'k' for keep, 'sql' for raw SQL input.
 
         """
-        # print(the old and new records suspectred of being duplicates
+        # print the old and new records suspected of being duplicates
+        verbose = True
+        if duplicate[0] == duplicate[1]:  # No need to display if no duplicates were found
+            verbose = False
+
         data = self.query("SELECT * FROM {} WHERE id IN ({})".format(table, ','.join(map(str, duplicate))), \
-                          fmt='table', verbose=True, use_converters=False)
+                          fmt='table', verbose=verbose, use_converters=False)
         columns = data.colnames[1:]
         old, new = [[data[n][k] for k in columns[1:]] for n in [0, 1]]
 
         # Prompt the user for action
-        replace = raw_input(
+        replace = get_input(
             "\nKeep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(
                     duplicate[0])).lower()
         replace = replace.strip()
@@ -368,7 +378,7 @@ class Database:
             elif replace == 'help':
                 _help()
 
-            replace = raw_input(
+            replace = get_input(
                 "\nKeep both records [k]? Or replace [r], complete [c], or keep only [Press *Enter*] record {}? (Type column name to inspect or 'help' for options): ".format(
                         duplicate[0])).lower()
 
@@ -376,7 +386,7 @@ class Database:
 
             # Replace the entire old record with the new record
             if replace == 'r':
-                sure = raw_input(
+                sure = get_input(
                     'Are you sure you want to replace record {} with record {}? [y/n] : '.format(*duplicate))
                 if sure.lower() == 'y':
                     self.modify("DELETE FROM {} WHERE id={}".format(table, duplicate[0]), verbose=False)
@@ -449,7 +459,9 @@ class Database:
         """
         data_tables = {}
 
-        for table in ['sources'] + [t for t in zip(*self.list("SELECT * FROM sqlite_master WHERE type='table'"))[1] if
+        t = self.query("SELECT * FROM sqlite_master WHERE type='table'", fmt='table')
+        all_tables = t['name'].tolist()
+        for table in ['sources'] + [t for t in all_tables if
                                     t not in ['sources', 'sqlite_sequence']]:
 
             try:
@@ -566,7 +578,8 @@ class Database:
 
         """
         try:
-            ids = self.query("SELECT id FROM {}".format(table), unpack=True)[0]
+            t = self.query("SELECT id FROM {}".format(table), unpack=True, fmt='table')
+            ids = t['id']
             all_ids = np.array(range(1, max(ids)))
         except TypeError:
             ids = None
@@ -608,19 +621,21 @@ class Database:
 
             # Gather user data to add to CHANGELOG table
             import socket, datetime
-            if not diff_only: user = raw_input('Please enter your name : ')
+            if not diff_only: user = get_input('Please enter your name : ')
             machine_name = socket.gethostname()
             date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
             modified_tables = []
 
             # Merge table by table, starting with SOURCES
-            tables = tables or ['sources'] + [t for t in zip(*self.list(
+            tables = [tables] or ['sources'] + [t for t in zip(*self.list(
                 "SELECT * FROM sqlite_master WHERE name NOT LIKE '%Backup%' AND name!='sqlite_sequence' AND type='table'{}".format(
                     " AND name IN ({})".format("'" + "','".join(tables) + "'") if tables else '')))[1] if
                                               t != 'sources']
             for table in tables:
                 # Get column names and data types from master table and column names from conflicted table
-                columns, types, constraints = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:4]
+                metadata = self.query("PRAGMA table_info({})".format(table), fmt='table')
+                columns, types, constraints = [np.array(metadata[n]) for n in ['name', 'type', 'notnull']]
+                # columns, types, constraints = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:4]
                 conflicted_cols = con.query("PRAGMA table_info({})".format(table), unpack=True)[1]
 
                 if any([i not in columns for i in conflicted_cols]):
@@ -634,6 +649,7 @@ class Database:
                     if any([i not in conflicted_cols for i in columns]):
                         con.modify("DROP TABLE IF EXISTS Conflicted_{0}".format(table))
                         con.modify("ALTER TABLE {0} RENAME TO Conflicted_{0}".format(table))
+                        # TODO: Update to allow multiple primary and foreign keys
                         con.modify("CREATE TABLE {0} ({1})".format(table, ', '.join( \
                                 ['{} {} {}{}'.format(c, t, r, ' UNIQUE PRIMARY KEY' if c == 'id' else '') \
                                  for c, t, r in zip(columns, types, constraints * ['NOT NULL'])])))
@@ -704,7 +720,7 @@ class Database:
 
             # Add data to CHANGELOG table
             if not diff_only:
-                user_description = raw_input('\nPlease describe the changes made in this merge: ')
+                user_description = get_input('\nPlease describe the changes made in this merge: ')
                 self.list("INSERT INTO changelog VALUES(?, ?, ?, ?, ?, ?, ?)", \
                           (None, date, str(user), machine_name, ', '.join(modified_tables), user_description,
                            os.path.basename(conflicted)))
@@ -945,16 +961,15 @@ class Database:
                     # Unpack the results if necessary (data types are not preserved)
                     if unpack: array = np.array(zip(*array))
 
-                    # print(on screen
+                    # print on screen
                     if verbose: pprint(table)
 
-                    # print(the results to file
+                    # print the results to file
                     if export:
                         # If .vot or .xml, assume VOTable export with votools
                         if export.lower().endswith('.xml') or export.lower().endswith('.vot'):
                             votools.dict_tovot(dictionary, export)
-
-                        # Otherwise print(as ascii
+                        # Otherwise print as ascii
                         else:
                             ii.write(table, export, Writer=ii.FixedWidthTwoLine, fill_values=[('None', '-')])
 
@@ -1010,7 +1025,9 @@ class Database:
 
         """
         # Get list of columns to search and format properly
-        all_columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
+        t = self.query("PRAGMA table_info({})".format(table), unpack=True, fmt='table')
+        all_columns = t['name'].tolist()
+        types = t['type'].tolist()
         columns = columns or all_columns
         columns = np.asarray([columns] if isinstance(columns, str) else columns)
 
@@ -1023,6 +1040,10 @@ class Database:
             print("'{}' is not a column in the {} table.".format(col, table.upper()))
 
         # Coordinate search
+        if sys.version_info[0] == 2:
+            str_check = (str, unicode)
+        else:
+            str_check = str
         if isinstance(criterion, (tuple, list, np.ndarray)):
             try:
                 q = "SELECT * FROM {} WHERE ra BETWEEN ".format(table) \
@@ -1035,7 +1056,7 @@ class Database:
                 print("Could not search {} table by coordinates {}. Try again.".format(table.upper(), criterion))
 
         # Text string search of columns with 'TEXT' data type
-        elif isinstance(criterion, (str, unicode)) and any(columns) and 'TEXT' in types:
+        elif isinstance(criterion, str_check) and any(columns) and 'TEXT' in types:
             try:
                 q = "SELECT * FROM {} WHERE {}".format(table, ' OR '.join([r"REPLACE(" + c + r",' ','') like '%" \
                      + criterion.replace(' ', '') + r"%'" for c, t in zip(columns,types[np.in1d(columns, all_columns)]) \
@@ -1114,7 +1135,7 @@ class Database:
                 if elem == 'id':
                     continue
                 else:
-                    ind = np.where(columns == elem)[0]
+                    ind, = np.where(columns == elem)
                     constraints[ind] = 'UNIQUE NOT NULL'
         else:
             pk = ['id']
@@ -1125,7 +1146,8 @@ class Database:
             goodtogo = False
 
         if goodtogo:
-            tables = self.query("SELECT name FROM sqlite_master", unpack=True)[0]
+            t = self.query("SELECT name FROM sqlite_master", unpack=True, fmt='table')
+            tables = t['name'].tolist()
 
             # If the table exists, modify the columns
             if table in tables and not new_table:
@@ -1205,9 +1227,10 @@ class Database:
                 constraints.append('')
 
         # Set PRIMARY KEY columns
-        for i in np.where(pk >= 1)[0]:
+        ind, = np.where(pk >= 1)
+        for i in ind:
             constraints[i] += ' UNIQUE'  # Add UNIQUE constraint to primary keys
-        pk_names = columns[np.where(pk > 0)[0]]
+        pk_names = columns[ind]
 
         try:
             # Rename the old table and create a new one
@@ -1228,7 +1251,8 @@ class Database:
             self.list(sqltxt)
 
             # Populate the new table and drop the old one
-            old_columns = [c for c in self.query("PRAGMA table_info(TempOldTable_foreign)", unpack=True)[1] if c in columns]
+            tempdata = self.query("PRAGMA table_info(TempOldTable_foreign)", fmt='table')
+            old_columns = [c for c in tempdata['name'] if c in columns]
             self.list("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable_foreign".format(table, ','.join(old_columns)))
             self.list("DROP TABLE TempOldTable_foreign")
 
@@ -1241,6 +1265,7 @@ class Database:
             print('Error attempting to add foreign key.')
             self.list("DROP TABLE IF EXISTS {0}".format(table))
             self.list("ALTER TABLE TempOldTable_foreign RENAME TO {0}".format(table))
+            raise sqlite3.IntegrityError('Failed to add foreign key')
 
         # Reactivate foreign keys
         self.list('PRAGMA foreign_keys=ON')
@@ -1461,8 +1486,10 @@ def convert_spectrum(File):
 
     """
     spectrum, header = '', ''
+    if isinstance(File, type(b'')):  # Decode if needed (ie, for Python 3)
+        File = File.decode('utf-8')
 
-    if isinstance(File, str):
+    if isinstance(File, (str, type(u''))):
 
         # Convert variable path to absolute path
         if File.startswith('$'):
@@ -1473,7 +1500,10 @@ def convert_spectrum(File):
         if File.endswith('.fits'):
             try:
                 # Get the data
-                spectrum, header = pf.getdata(File, cache=True, header=True)
+                try:
+                    spectrum, header = pf.getdata(File, cache=True, header=True)
+                except:
+                    spectrum, header = pf.getdata(File, cache=False, header=True)
                 
                 # Check the key type
                 KEY_TYPE = ['CTYPE1']
@@ -1886,4 +1916,4 @@ def _autofill_spec_record(record):
 
 
 type_dict = {'INTEGER': np.dtype('int64'), 'REAL': np.dtype('float64'), 'TEXT': np.dtype('S64'),
-             'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('S128'), 'BOOLEAN': np.dtype('bool')}
+             'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('S164'), 'BOOLEAN': np.dtype('bool')}
