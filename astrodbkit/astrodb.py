@@ -1524,27 +1524,28 @@ def convert_spectrum(File):
                 # If no wl axis generated, then clear out all retrieved data for object
                 if not isinstance(spectrum[0],np.ndarray): 
                     spectrum = None
-
             except IOError:
                 # Check if the FITS file is just Numpy arrays
                 try:
                     spectrum, header = pf.getdata(File, cache=True, header=True)
                 except:
+                    print('Could not read FITS file at {}'.format(File))
                     pass
-
-        # For .txt files
-        if File.endswith('.txt'):
+        # For non-FITS files, assume ascii
+        else:
             try:
                 spectrum = ii.read(File)
                 spectrum = np.array([np.asarray(spectrum.columns[n]) for n in range(len(spectrum.columns))])
                 try:
                     txt, header = open(File), []
                     for i in txt:
-                        if any([i.startswith(char) for char in ['#', '|', '\\']]): header.append(i.replace('\n', ''))
+                        if any([i.startswith(char) for char in ['#', '|', '\\']]):
+                            header.append(i.replace('\n', ''))
                     txt.close()
                 except:
                     pass
             except:
+                print('Could not read file at {}'.format(File))
                 pass
 
     if spectrum == '':
