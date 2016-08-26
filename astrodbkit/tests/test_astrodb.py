@@ -144,3 +144,9 @@ def test_cuny():
     file = 'http://academicworks.cuny.edu/context/hc_pubs/article/1118/type/native/viewcontent'  # FITS file
     data = astrodb.convert_spectrum(file)
     assert not isinstance(data, type(''))
+
+
+def test_references():
+    t = bdnyc_db.query('SELECT id FROM publications', fmt='table')
+    id = t['id'][0]
+    bdnyc_db.references(id, column_name='publication_id')
