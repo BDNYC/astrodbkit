@@ -35,6 +35,7 @@ def test_search():
 
 def test_inventory():
     bdnyc_db.inventory(1)
+    bdnyc_db.inventory(11)
 
 
 def test_sqlquery():

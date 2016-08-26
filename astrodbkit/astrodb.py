@@ -468,8 +468,9 @@ class Database:
             try:
 
                 # Get the columns, pull out redundant ones, and query the table for this source's data
-                columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
-                # TODO: Fix for Python 3
+                t = self.query("PRAGMA table_info({})".format(table), fmt='table')
+                columns = np.array(t['name'])
+                types = np.array(t['type'])
 
                 if table == 'sources' or 'source_id' in columns:
 
