@@ -1471,7 +1471,7 @@ def adapt_spectrum(spec):
     return spec
 
 
-def convert_spectrum(File):
+def convert_spectrum(File, verbose=False):
     """
     Converts a SPECTRUM data type stored in the database into a (W,F,E) sequence of arrays.
 
@@ -1497,8 +1497,11 @@ def convert_spectrum(File):
             abspath = os.popen('echo {}'.format(File.split('/')[0])).read()[:-1]
             if abspath: File = File.replace(File.split('/')[0], abspath)
 
-        print('Downloading {}'.format(File))
-        downloaded_file = download_file(File, cache=True)  # download only once
+        if File.startswith('http'):
+            if verbose: print('Downloading {}'.format(File))
+            downloaded_file = download_file(File, cache=True)  # download only once
+        else:
+            downloaded_file = File
 
         try:  # Try FITS files first
             # Get the data
@@ -1527,17 +1530,17 @@ def convert_spectrum(File):
             if not isinstance(spectrum[0],np.ndarray):
                 spectrum = None
 
-            print('Read as FITS...')
-        except IOError:
+            if verbose: print('Read as FITS...')
+        except (IOError, KeyError):
             # Check if the FITS file is just Numpy arrays
             try:
                 spectrum, header = pf.getdata(downloaded_file, cache=True, header=True)
-                print('Read as FITS Numpy array...')
-            except IOError:
+                if verbose: print('Read as FITS Numpy array...')
+            except (IOError, KeyError):
                 try: # Try ascii
                     spectrum = ii.read(downloaded_file)
                     spectrum = np.array([np.asarray(spectrum.columns[n]) for n in range(len(spectrum.columns))])
-                    print('Read as ascii...')
+                    if verbose: print('Read as ascii...')
 
                     txt, header = open(downloaded_file), []
                     for i in txt:
