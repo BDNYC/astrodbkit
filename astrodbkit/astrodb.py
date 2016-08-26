@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import astropy.io.fits as pf
 import astropy.io.ascii as ii
 import astropy.table as at
+from astropy.utils.data import download_file
 from . import votools
 
 warnings.simplefilter('ignore')
@@ -1496,57 +1497,55 @@ def convert_spectrum(File):
             abspath = os.popen('echo {}'.format(File.split('/')[0])).read()[:-1]
             if abspath: File = File.replace(File.split('/')[0], abspath)
 
-        # For FITS files
-        if File.endswith('.fits'):
+        print('Downloading {}'.format(File))
+        downloaded_file = download_file(File, cache=True)  # download only once
+
+        try:  # Try FITS files first
+            # Get the data
+            # try:
+            spectrum, header = pf.getdata(downloaded_file, cache=True, header=True)
+            # except:
+            #     spectrum, header = pf.getdata(File, cache=False, header=True)
+
+            # Check the key type
+            KEY_TYPE = ['CTYPE1']
+            setType = set(KEY_TYPE).intersection(set(header.keys()))
+            if len(setType) == 0:
+                isLinear = True
+            else:
+                valType = header[setType.pop()]
+                isLinear = valType.strip().upper() == 'LINEAR'
+
+            # Get wl, flux & error data from fits file
+            spectrum = __get_spec(spectrum, header, File)
+
+            # Generate wl axis when needed
+            if not isinstance(spectrum[0],np.ndarray):
+                spectrum[0] = __create_waxis(header, len(spectrum[1]), File)
+
+            # If no wl axis generated, then clear out all retrieved data for object
+            if not isinstance(spectrum[0],np.ndarray):
+                spectrum = None
+
+            print('Read as FITS...')
+        except IOError:
+            # Check if the FITS file is just Numpy arrays
             try:
-                # Get the data
-                try:
-                    spectrum, header = pf.getdata(File, cache=True, header=True)
-                except:
-                    spectrum, header = pf.getdata(File, cache=False, header=True)
-                
-                # Check the key type
-                KEY_TYPE = ['CTYPE1']
-                setType = set(KEY_TYPE).intersection(set(header.keys()))
-                if len(setType) == 0:
-                    isLinear = True
-                else:
-                    valType = header[setType.pop()]
-                    isLinear = valType.strip().upper() == 'LINEAR'
-
-                # Get wl, flux & error data from fits file
-                spectrum = __get_spec(spectrum, header, File)
-
-                # Generate wl axis when needed
-                if not isinstance(spectrum[0],np.ndarray): 
-                    spectrum[0] = __create_waxis(header, len(spectrum[1]), File)
-
-                # If no wl axis generated, then clear out all retrieved data for object
-                if not isinstance(spectrum[0],np.ndarray): 
-                    spectrum = None
+                spectrum, header = pf.getdata(downloaded_file, cache=True, header=True)
+                print('Read as FITS Numpy array...')
             except IOError:
-                # Check if the FITS file is just Numpy arrays
-                try:
-                    spectrum, header = pf.getdata(File, cache=True, header=True)
-                except:
-                    print('Could not read FITS file at {}'.format(File))
-                    pass
-        # For non-FITS files, assume ascii
-        else:
-            try:
-                spectrum = ii.read(File)
-                spectrum = np.array([np.asarray(spectrum.columns[n]) for n in range(len(spectrum.columns))])
-                try:
-                    txt, header = open(File), []
+                try: # Try ascii
+                    spectrum = ii.read(downloaded_file)
+                    spectrum = np.array([np.asarray(spectrum.columns[n]) for n in range(len(spectrum.columns))])
+                    print('Read as ascii...')
+
+                    txt, header = open(downloaded_file), []
                     for i in txt:
                         if any([i.startswith(char) for char in ['#', '|', '\\']]):
                             header.append(i.replace('\n', ''))
                     txt.close()
                 except:
                     pass
-            except:
-                print('Could not read file at {}'.format(File))
-                pass
 
     if spectrum == '':
         print('Could not retrieve spectrum at {}.'.format(File))

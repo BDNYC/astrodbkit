@@ -134,3 +134,13 @@ def test_output_spectrum():
 def test_plot_spectrum():
     t = bdnyc_db.query('SELECT id FROM spectra LIMIT 1', fmt='array', fetch='one')
     bdnyc_db.plot_spectrum(t[0])
+
+
+def test_cuny():
+    file = 'http://academicworks.cuny.edu/context/hc_pubs/article/1093/type/native/viewcontent'  # txt file
+    data = astrodb.convert_spectrum(file)
+    assert not isinstance(data, type(''))
+
+    file = 'http://academicworks.cuny.edu/context/hc_pubs/article/1118/type/native/viewcontent'  # FITS file
+    data = astrodb.convert_spectrum(file)
+    assert not isinstance(data, type(''))
