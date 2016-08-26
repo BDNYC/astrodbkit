@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import astropy.io.fits as pf
 import astropy.io.ascii as ii
 import astropy.table as at
+from astropy.utils.data import download_file
 from . import votools
 
 warnings.simplefilter('ignore')
@@ -467,7 +468,9 @@ class Database:
             try:
 
                 # Get the columns, pull out redundant ones, and query the table for this source's data
-                columns, types = self.query("PRAGMA table_info({})".format(table), unpack=True)[1:3]
+                t = self.query("PRAGMA table_info({})".format(table), fmt='table')
+                columns = np.array(t['name'])
+                types = np.array(t['type'])
 
                 if table == 'sources' or 'source_id' in columns:
 
@@ -508,6 +511,71 @@ class Database:
 
         if fetch: return data_tables
 
+    def references(self, criteria, fetch=False, publications='publications', column_name='publication_shortname'):
+        """
+        Do a reverse lookup on the **publications** table. Will return every entry that matches that refernce.
+
+        Parameters
+        ----------
+        criteria: int or str
+            The id from the PUBLICATIONS table whose data across all tables is to be printed.
+        fetch: bool
+            Return the results.
+        publications: str
+            Name of the publications table
+        column_name: str
+            Name of the reference column in other tables
+
+        Returns
+        -------
+        data_tables: dict
+             Returns a dictionary of astropy tables with the table name as the keys.
+
+        """
+
+        data_tables = dict()
+
+        # If an ID is provided but the column name is publication shortname, grab the shortname
+        if isinstance(criteria, type(1)) and column_name == 'publication_shortname':
+            t = self.query("SELECT * FROM {} WHERE id={}".format(publications, criteria), fmt='table')
+            if len(t) > 0:
+                criteria = t['shortname'][0]
+            else:
+                print('No match found for {}'.format(criteria))
+                return
+
+        t = self.query("SELECT * FROM sqlite_master WHERE type='table'", fmt='table')
+        all_tables = t['name'].tolist()
+        for table in ['sources'] + [t for t in all_tables if
+                                    t not in ['publications', 'sqlite_sequence', 'sources']]:
+
+            # Get the columns, pull out redundant ones, and query the table for this source's data
+            t = self.query("PRAGMA table_info({})".format(table), fmt='table')
+            columns = np.array(t['name'])
+            types = np.array(t['type'])
+
+            # Only get simple data types and exclude redundant ones for nicer printing
+            columns = columns[
+                ((types == 'REAL') | (types == 'INTEGER') | (types == 'TEXT')) & (columns != column_name)]
+
+            # Query the table
+            try:
+                data = self.query("SELECT {} FROM {} WHERE {}='{}'".format(','.join(columns), table,
+                                                                         column_name, criteria), fmt='table')
+            except:
+                data = None
+
+            # If there's data for this table, save it
+            if data:
+                if fetch:
+                    data_tables[table] = self.query(
+                        "SELECT {} FROM {} WHERE {}='{}'".format(
+                            ','.join(columns), table, column_name, criteria), fmt='table', fetch=True)
+                else:
+                    data = data[list(columns)]
+                    pprint(data, title=table.upper())
+
+        if fetch: return data_tables
 
     def lookup(self, criteria, table, columns=''):
         """
@@ -1470,7 +1538,7 @@ def adapt_spectrum(spec):
     return spec
 
 
-def convert_spectrum(File):
+def convert_spectrum(File, verbose=False):
     """
     Converts a SPECTRUM data type stored in the database into a (W,F,E) sequence of arrays.
 
@@ -1496,57 +1564,58 @@ def convert_spectrum(File):
             abspath = os.popen('echo {}'.format(File.split('/')[0])).read()[:-1]
             if abspath: File = File.replace(File.split('/')[0], abspath)
 
-        # For FITS files
-        if File.endswith('.fits'):
-            try:
-                # Get the data
-                try:
-                    spectrum, header = pf.getdata(File, cache=True, header=True)
-                except:
-                    spectrum, header = pf.getdata(File, cache=False, header=True)
-                
-                # Check the key type
-                KEY_TYPE = ['CTYPE1']
-                setType = set(KEY_TYPE).intersection(set(header.keys()))
-                if len(setType) == 0:
-                    isLinear = True
-                else:
-                    valType = header[setType.pop()]
-                    isLinear = valType.strip().upper() == 'LINEAR'
-
-                # Get wl, flux & error data from fits file
-                spectrum = __get_spec(spectrum, header, File)
-
-                # Generate wl axis when needed
-                if not isinstance(spectrum[0],np.ndarray): 
-                    spectrum[0] = __create_waxis(header, len(spectrum[1]), File)
-
-                # If no wl axis generated, then clear out all retrieved data for object
-                if not isinstance(spectrum[0],np.ndarray): 
-                    spectrum = None
-            except IOError:
-                # Check if the FITS file is just Numpy arrays
-                try:
-                    spectrum, header = pf.getdata(File, cache=True, header=True)
-                except:
-                    print('Could not read FITS file at {}'.format(File))
-                    pass
-        # For non-FITS files, assume ascii
+        if File.startswith('http'):
+            if verbose: print('Downloading {}'.format(File))
+            downloaded_file = download_file(File, cache=True)  # download only once
         else:
+            downloaded_file = File
+
+        try:  # Try FITS files first
+            # Get the data
+            # try:
+            spectrum, header = pf.getdata(downloaded_file, cache=True, header=True)
+            # except:
+            #     spectrum, header = pf.getdata(File, cache=False, header=True)
+
+            # Check the key type
+            KEY_TYPE = ['CTYPE1']
+            setType = set(KEY_TYPE).intersection(set(header.keys()))
+            if len(setType) == 0:
+                isLinear = True
+            else:
+                valType = header[setType.pop()]
+                isLinear = valType.strip().upper() == 'LINEAR'
+
+            # Get wl, flux & error data from fits file
+            spectrum = __get_spec(spectrum, header, File)
+
+            # Generate wl axis when needed
+            if not isinstance(spectrum[0],np.ndarray):
+                spectrum[0] = __create_waxis(header, len(spectrum[1]), File)
+
+            # If no wl axis generated, then clear out all retrieved data for object
+            if not isinstance(spectrum[0],np.ndarray):
+                spectrum = None
+
+            if verbose: print('Read as FITS...')
+        except (IOError, KeyError):
+            # Check if the FITS file is just Numpy arrays
             try:
-                spectrum = ii.read(File)
-                spectrum = np.array([np.asarray(spectrum.columns[n]) for n in range(len(spectrum.columns))])
-                try:
-                    txt, header = open(File), []
+                spectrum, header = pf.getdata(downloaded_file, cache=True, header=True)
+                if verbose: print('Read as FITS Numpy array...')
+            except (IOError, KeyError):
+                try: # Try ascii
+                    spectrum = ii.read(downloaded_file)
+                    spectrum = np.array([np.asarray(spectrum.columns[n]) for n in range(len(spectrum.columns))])
+                    if verbose: print('Read as ascii...')
+
+                    txt, header = open(downloaded_file), []
                     for i in txt:
                         if any([i.startswith(char) for char in ['#', '|', '\\']]):
                             header.append(i.replace('\n', ''))
                     txt.close()
                 except:
                     pass
-            except:
-                print('Could not read file at {}'.format(File))
-                pass
 
     if spectrum == '':
         print('Could not retrieve spectrum at {}.'.format(File))
