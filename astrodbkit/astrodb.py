@@ -1298,8 +1298,8 @@ class Database:
 
         try:
             # Rename the old table and create a new one
-            self.list("DROP TABLE IF EXISTS TempOldTable")
-            self.list("ALTER TABLE {0} RENAME TO TempOldTable".format(table))
+            self.list("DROP TABLE IF EXISTS TempOldTable_foreign")
+            self.list("ALTER TABLE {0} RENAME TO TempOldTable_foreign".format(table))
 
             # Re-create the table specifying the FOREIGN KEY
             sqltxt = "CREATE TABLE {0} ({1}".format(table, ', '.join(['{} {} {}'.format(c, t, r)
@@ -1307,17 +1307,17 @@ class Database:
             sqltxt += ', PRIMARY KEY({})'.format(', '.join([elem for elem in pk_names]))
             if isinstance(key_child, type(list())):
                 for kc, p, kp in zip(key_child, parent, key_parent):
-                    sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2})'.format(kc, p, kp)
+                    sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(kc, p, kp)
             else:
-                sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2})'.format(key_child, parent, key_parent)
+                sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(key_child, parent, key_parent)
             sqltxt += ' )'
 
             self.list(sqltxt)
 
             # Populate the new table and drop the old one
-            old_columns = [c for c in self.query("PRAGMA table_info(TempOldTable)", unpack=True)[1] if c in columns]
-            self.modify("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable".format(table, ','.join(old_columns)))
-            self.list("DROP TABLE TempOldTable")
+            old_columns = [c for c in self.query("PRAGMA table_info(TempOldTable_foreign)", unpack=True)[1] if c in columns]
+            self.list("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable_foreign".format(table, ','.join(old_columns)))
+            self.list("DROP TABLE TempOldTable_foreign")
 
             if verbose:
                 print('Successfully added foreign key.')
@@ -1327,7 +1327,7 @@ class Database:
         except:
             print('Error attempting to add foreign key.')
             self.list("DROP TABLE IF EXISTS {0}".format(table))
-            self.list("ALTER TABLE TempOldTable RENAME TO {0}".format(table))
+            self.list("ALTER TABLE TempOldTable_foreign RENAME TO {0}".format(table))
 
         # Reactivate foreign keys
         self.list('PRAGMA foreign_keys=ON')
