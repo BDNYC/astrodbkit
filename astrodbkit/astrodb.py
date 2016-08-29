@@ -74,26 +74,28 @@ class Database:
                 if os.path.isfile(self.dbpath):
                     import datetime
                     date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")
-                    os.system("mv {} {}".format(self.dbpath,self.dbpath.replace('.db',date+'.db')))
+                    print("Renaming existing file {} to {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
+                    os.system("mv {} {}".format(self.dbpath, self.dbpath.replace('.db',date+'.db')))
                 
                 # Make the new database from the .sql files
                 # First the schema...
-                os.system("sqlite3 {} < {}".format(self.dbpath,self.sqlpath))
+                os.system("sqlite3 {} < {}".format(self.dbpath, self.sqlpath))
                 
                 # Then load the table data...
+                print('Populating database...')
                 tables = os.popen('sqlite3 {} ".tables"'.format(self.dbpath)).read().replace('\n',' ').split()
                 for table in tables:
-                    os.system('sqlite3 {0} ".read tabledata/{0}.sql"'.format(table))
+                    os.system('sqlite3 {0} ".read tabledata/{1}.sql"'.format(self.dbpath, table))
             
             else:
-                self.sqlpath = dbpath.replace('.db','.sql')
+                self.sqlpath = dbpath.replace('.db', '.sql')
                 self.dbpath = dbpath
             
             # Create .sql scema file if it doesn't exist
-            os.system('touch {}'.format(self.sqlpath.replace(' ','\ ')))
+            os.system('touch {}'.format(self.sqlpath.replace(' ', '\ ')))
                 
             # Create connection
-            con = sqlite3.connect(dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
+            con = sqlite3.connect(self.dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
             con.text_factory = str
             self.conn = con
             self.curs = con.cursor()
@@ -116,6 +118,8 @@ class Database:
 
             # Activate foreign key support
             self.list('PRAGMA foreign_keys=ON')
+
+            print("Database ready for use")
             
         else:
             print("Sorry, no such file '{}'".format(dbpath))
@@ -354,16 +358,18 @@ class Database:
         else:
             print('\nFinished clean up on {} table.'.format(table.upper()))
 
-    @property
+    # @property
     def close(self):
         """
         Close the database and ask to delete the file
         """
-        delete = input("Do you want to delete {}? Don't worry, a new one will be generated when you run astrodb.Database() again. ([y],n) : ".format(self.dbpath))
-        if delete=='y':
+        delete = raw_input("Do you want to delete {}? Don't worry, a new one will be generated when you run astrodb.Database() again. (y,[n]) : ".format(self.dbpath))
+        if delete.lower() == 'y':
+            print("Deleting {}".format(self.dbpath))
             os.system("rm {}".format(self.dbpath))
-            
-        self.conn.close
+
+        print('Closing connection')
+        self.conn.close()
 
     def _compare_records(self, table, duplicate, options=['r', 'c', 'k', 'sql']):
         """
@@ -1006,7 +1012,7 @@ class Database:
         except IOError:
             print('Could not execute: ' + SQL)
 
-    def save(self, branch='auto_db'):
+    def save(self, branch='auto_db', git=False):
         """
         Dump the entire contents of the database into a .sql file and push to Github
         
@@ -1037,6 +1043,7 @@ class Database:
         tables = self.query("select tbl_name from sqlite_master where type='table'")['tbl_name']
         tablepaths = [self.sqlpath]
         for table in tables:
+            print('Generating {}...'.format(table))
             tablepath = 'tabledata/{}.sql'.format(table)
             tablepaths.append(tablepath)
             with open(tablepath, 'w') as f:
@@ -1046,19 +1053,20 @@ class Database:
                         f.write('%s\n' % line.encode('ascii', 'ignore'))
         
         # Collect name and commit message from the user and push to Github
-        user = raw_input('Please enter your name : ')
-        commit = raw_input('Briefly describe the changes you have made : ')
-        if user and commit:
-            try:
-                call('git checkout {}'.format(branch), shell=True)
-                call('git pull origin {}'.format(branch), shell=True)
-                call('git add {}'.format(' '.join(tablepaths)), shell=True)
-                call('git commit -m "(via astrodbkit) {}"'.format(commit), shell=True)
-                call('git push origin {}'.format(branch), shell=True)
-            except:
-                print('Changes written to file but not pushed to Github. Make sure you are working from a git repo.')
-        else:
-            print('Sorry, astrodbkit needs a username and commit message to push changes to Guthub.')
+        if git:
+            user = raw_input('Please enter your name : ')
+            commit = raw_input('Briefly describe the changes you have made : ')
+            if user and commit:
+                try:
+                    call('git checkout {}'.format(branch), shell=True)
+                    call('git pull origin {}'.format(branch), shell=True)
+                    call('git add {}'.format(' '.join(tablepaths)), shell=True)
+                    call('git commit -m "(via astrodbkit) {}"'.format(commit), shell=True)
+                    call('git push origin {}'.format(branch), shell=True)
+                except:
+                    print('Changes written to file but not pushed to Github. Make sure you are working from a git repo.')
+            else:
+                print('Sorry, astrodbkit needs a username and commit message to push changes to Guthub.')
 
     def schema(self, table):
         """
