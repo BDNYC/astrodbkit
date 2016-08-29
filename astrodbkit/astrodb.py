@@ -90,7 +90,7 @@ class Database:
                 self.dbpath = dbpath
             
             # Create .sql scema file if it doesn't exist
-            os.system('touch {}'.format(self.sqlpath))
+            os.system('touch {}'.format(self.sqlpath.replace(' ','\ ')))
                 
             # Create connection
             con = sqlite3.connect(dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
@@ -1041,12 +1041,13 @@ class Database:
             tablepaths.append(tablepath)
             with open(tablepath, 'w') as f:
                 for line in self.conn.iterdump():
+                    line = line.decode('utf-8').strip()
                     if line.startswith('INSERT INTO "{}"'.format(table)):
-                        f.write('%s\n' % line)
+                        f.write('%s\n' % line.encode('ascii', 'ignore'))
         
         # Collect name and commit message from the user and push to Github
-        user = input('Please enter your name : ')
-        commit = input('Briefly describe the changes you have made : ')
+        user = raw_input('Please enter your name : ')
+        commit = raw_input('Briefly describe the changes you have made : ')
         if user and commit:
             try:
                 call('git checkout {}'.format(branch), shell=True)
