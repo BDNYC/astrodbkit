@@ -6,6 +6,11 @@ python:
     - 3.4
     - 3.5
 
+before_script:
+  - "export DISPLAY=:99.0" # xvfb is used to ensure matplotlib plots don't fail
+  - "sh -e /etc/init.d/xvfb start"
+  - sleep 3 # give xvfb some time to start
+
 env:
     global:
         # The following versions are the 'default' for tests, unless
@@ -26,8 +31,6 @@ env:
 matrix:
     allow_failures:
         - python: 3.3
-        - python: 3.4
-        - python: 3.5
 
 install:
     - git clone git://github.com/astropy/ci-helpers.git
