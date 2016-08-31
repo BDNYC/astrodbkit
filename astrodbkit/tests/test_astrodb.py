@@ -30,7 +30,9 @@ def test_load_empty():
 
 
 def test_search(): 
-    bdnyc_db.search('2MASS', 'sources')
+    bdnyc_db.search('young', 'sources')
+    bdnyc_db.search((222.106, 10.533), 'sources')
+    bdnyc_db.search((338.673, 40.694), 'sources', radius=5)
 
 
 def test_inventory():
