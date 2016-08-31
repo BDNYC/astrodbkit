@@ -7,6 +7,8 @@ import os
 import sys
 import sqlite3
 import warnings
+import math
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import astropy.io.fits as pf
@@ -1072,12 +1074,12 @@ class Database:
         except ValueError:
             print('Table {} not found'.format(table))
 
-    def search(self, criterion, table, columns='', fetch=False):
+    def search(self, criterion, table, columns='', fetch=False, radius=1/60.):
         """
         General search method for tables. For (ra,dec) input in decimal degrees,
-        i.e. '(12.3456,-65.4321)', returns all sources within 1 arcminute.
+        i.e. (12.3456,-65.4321), returns all sources within 1 arcminute, or the specified radius.
         For string input, i.e. 'vb10', returns all sources with case-insensitive partial text
-        ma  tches in columns with 'TEXT' data type. For integer input, i.e. 123, returns all
+        matches in columns with 'TEXT' data type. For integer input, i.e. 123, returns all
         exact matches of columns with INTEGER data type.
 
         Parameters
@@ -1089,9 +1091,12 @@ class Database:
         columns: sequence
             Specific column names to search, otherwise searches all columns
         fetch: bool
-                Return the results of the query as an Astropy table
+            Return the results of the query as an Astropy table
+        radius: float
+            Radius in degrees in which to search for objects if using (ra,dec). Default: 1/60 degree
 
         """
+
         # Get list of columns to search and format properly
         t = self.query("PRAGMA table_info({})".format(table), unpack=True, fmt='table')
         all_columns = t['name'].tolist()
@@ -1112,14 +1117,42 @@ class Database:
             str_check = (str, unicode)
         else:
             str_check = str
+
+        results = ''
+
         if isinstance(criterion, (tuple, list, np.ndarray)):
             try:
-                q = "SELECT * FROM {} WHERE ra BETWEEN ".format(table) \
-                    + str(criterion[0] - 0.01667) + " AND " \
-                    + str(criterion[0] + 0.01667) + " AND dec BETWEEN " \
-                    + str(criterion[1] - 0.01667) + " AND " \
-                    + str(criterion[1] + 0.01667)
-                results = self.query(q, fmt='table')
+                t = self.query('SELECT id,ra,dec FROM sources', fmt='table')
+                df = t.to_pandas()
+                df[['ra', 'dec']] = df[['ra', 'dec']].apply(pd.to_numeric)  # convert everything to floats
+                mask = df['ra'].isnull()
+                df = df[~mask]
+
+                def ang_sep(row, ra1, dec1):
+                    # Using Vicenty Formula (http://en.wikipedia.org/wiki/Great-circle_distance)
+                    # and adapting from astropy's SkyCoord
+
+                    factor = math.pi / 180
+                    sdlon = math.sin((row['ra'] - ra1) * factor)  # RA is longitude
+                    cdlon = math.cos((row['ra'] - ra1) * factor)
+                    slat1 = math.sin(dec1 * factor)  # Dec is latitude
+                    slat2 = math.sin(row['dec'] * factor)
+                    clat1 = math.cos(dec1 * factor)
+                    clat2 = math.cos(row['dec'] * factor)
+
+                    num1 = clat2 * sdlon
+                    num2 = clat1 * slat2 - slat1 * clat2 * cdlon
+                    numerator = math.sqrt(num1 ** 2 + num2 ** 2)
+                    denominator = slat1 * slat2 + clat1 * clat2 * cdlon
+
+                    return np.arctan2(numerator, denominator) / factor
+
+                df['theta'] = df.apply(ang_sep, axis=1, args=(criterion[0], criterion[1]))
+                good = df['theta'] <= radius
+
+                if sum(good) > 0:
+                    params = ", ".join(['{}'.format(s) for s in df[good]['id'].tolist()])
+                    results = self.query('SELECT * FROM sources WHERE id IN ({})'.format(params), fmt='table')
             except:
                 print("Could not search {} table by coordinates {}. Try again.".format(table.upper(), criterion))
 
@@ -1153,7 +1186,7 @@ class Database:
             if results: 
                 pprint(results, title=table.upper())
             else:
-                print("No results found for {} in {} the table.".format(criterion, table.upper()))
+                print("No results found for {} in the {} table.".format(criterion, table.upper()))
 
     def table(self, table, columns, types, constraints='', pk='', new_table=False):
         """
