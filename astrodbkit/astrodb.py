@@ -1096,6 +1096,7 @@ class Database:
             Radius in degrees in which to search for objects if using (ra,dec). Default: 1/60 degree
 
         """
+
         # Get list of columns to search and format properly
         t = self.query("PRAGMA table_info({})".format(table), unpack=True, fmt='table')
         all_columns = t['name'].tolist()
