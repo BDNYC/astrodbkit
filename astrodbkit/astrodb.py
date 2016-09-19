@@ -697,7 +697,10 @@ class Database:
             modified_tables = []
 
             # Merge table by table, starting with SOURCES
-            tables = [tables] or ['sources'] + [t for t in zip(*self.list(
+            if not isinstance(tables, type(list())):
+                tables = [tables]
+
+            tables = tables or ['sources'] + [t for t in zip(*self.list(
                 "SELECT * FROM sqlite_master WHERE name NOT LIKE '%Backup%' AND name!='sqlite_sequence' AND type='table'{}".format(
                     " AND name IN ({})".format("'" + "','".join(tables) + "'") if tables else '')))[1] if
                                               t != 'sources']
