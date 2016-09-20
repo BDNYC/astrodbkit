@@ -1131,7 +1131,7 @@ class Database:
         
         # Write the table files to the tabledata directory
         os.system("mkdir -p {}".format(directory))
-        tables = self.query("select tbl_name from sqlite_master where type='table'")#['tbl_name']
+        tables = self.query("select tbl_name from sqlite_master where type='table'")['tbl_name']
         tablepaths = [self.sqlpath]
         for table in tables:
             print('Generating {}...'.format(table))
