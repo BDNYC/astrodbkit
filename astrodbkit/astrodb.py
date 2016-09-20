@@ -1107,7 +1107,7 @@ class Database:
         Parameters
         ==========
         branch: str
-            The name of the git branch to push to
+            The name of the git branch to push to. Branch must exist or this will fail.
         git: bool
             Whether or not to push to GitHub
         directory: str
@@ -1152,7 +1152,7 @@ class Database:
             user = get_input('Please enter your name : ')
             commit = get_input('Briefly describe the changes you have made : ')
             if user and commit:
-                try:
+                try:  # If not on the same branch, changes are overwritten or aborted: BAD
                     call('git checkout {}'.format(branch), shell=True)
                     call('git pull origin {}'.format(branch), shell=True)
                     call('git add {}'.format(' '.join(tablepaths)), shell=True)
