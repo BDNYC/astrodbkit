@@ -1,7 +1,0 @@
-INSERT INTO "modes" VALUES(1,'Prism');
-INSERT INTO "modes" VALUES(2,'SXD');
-INSERT INTO "modes" VALUES(3,'LXD1.9');
-INSERT INTO "modes" VALUES(4,'SL');
-INSERT INTO "modes" VALUES(5,'LXD2.3');
-INSERT INTO "modes" VALUES(6,'Echelle');
-INSERT INTO "modes" VALUES(7,'LL');
