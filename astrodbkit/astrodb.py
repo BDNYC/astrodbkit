@@ -1100,7 +1100,7 @@ class Database:
         except IOError:
             print('Could not execute: ' + SQL)
 
-    def save(self, branch='auto_db', git=False):
+    def save(self, branch='auto_db', git=False, directory='tabledata'):
         """
         Dump the entire contents of the database into a .sql file and push to Github
         
@@ -1108,13 +1108,17 @@ class Database:
         ==========
         branch: str
             The name of the git branch to push to
+        git: bool
+            Whether or not to push to GitHub
+        directory: str
+            Directory name to store individual table data
         """
         from subprocess import call
         import socket, datetime
         
         # Create the .sql file is it doesn't exist, i.e. if the Database class called a .db file initially
         if not os.path.isfile(self.sqlpath):
-            self.sqlpath = self.dbpath.replace('.db','.sql')
+            self.sqlpath = self.dbpath.replace('.db', '.sql')
             os.system('touch {}'.format(self.sqlpath))
             
         # # Write the data to the .sql file
@@ -1124,19 +1128,22 @@ class Database:
                 
         # Alternatively...
         # Write the schema
-        os.system("echo '.output {}\n.schema' | sqlite3 {}".format(self.sqlpath,self.dbpath))
+        os.system("echo '.output {}\n.schema' | sqlite3 {}".format(self.sqlpath, self.dbpath))
         
         # Write the table files to the tabledata directory
-        os.system("mkdir -p tabledata")
+        os.system("mkdir -p {}".format(directory))
         tables = self.query("select tbl_name from sqlite_master where type='table'")['tbl_name']
         tablepaths = [self.sqlpath]
         for table in tables:
             print('Generating {}...'.format(table))
-            tablepath = 'tabledata/{}.sql'.format(table)
+            tablepath = '{0}/{1}.sql'.format(directory, table)
             tablepaths.append(tablepath)
             with open(tablepath, 'w') as f:
                 for line in self.conn.iterdump():
-                    line = line.decode('utf-8').strip()
+                    if sys.version_info.major == 2:
+                        line = line.decode('utf-8')
+
+                    line = line.strip()
                     if line.startswith('INSERT INTO "{}"'.format(table)):
                         f.write('%s\n' % line.encode('ascii', 'ignore'))
         

@@ -30,7 +30,9 @@ def test_load_empty():
 
 
 def test_search(): 
-    bdnyc_db.search('2MASS', 'sources')
+    bdnyc_db.search('young', 'sources')
+    bdnyc_db.search((222.106, 10.533), 'sources')
+    bdnyc_db.search((338.673, 40.694), 'sources', radius=5)
 
 
 def test_inventory():
@@ -151,3 +153,16 @@ def test_references():
     t = bdnyc_db.query('SELECT id FROM publications', fmt='table')
     id = t['id'][0]
     bdnyc_db.references(id, column_name='publication_id')
+
+
+def test_save():
+    empty_db.save(git=False, directory='tempdata')
+
+
+def test_close(monkeypatch):
+    # Fake user input
+    inputs = ['n']
+    input_generator = (i for i in inputs)
+    monkeypatch.setattr('astrodbkit.astrodb.get_input', lambda prompt: next(input_generator))
+
+    bdnyc_db.close()
