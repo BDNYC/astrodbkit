@@ -1,10 +1,9 @@
 import pytest
 import tempfile
-import os, sys
+import os
 from astropy.utils.data import download_file
 from .. import astrodb
 from sqlite3 import IntegrityError
-import io
 
 filename = os.path.join(tempfile.mkdtemp(), 'empty_db.db')
 
@@ -14,7 +13,8 @@ def setup_module(module):
         db_path = download_file("http://github.com/BDNYC/BDNYCdb/raw/master/bdnyc_database.db")
     except:
         db_path = download_file("http://github.com/BDNYC/BDNYCdb/raw/master/BDNYCv1.0.db")
-    module.bdnyc_db = astrodb.Database(db_path)
+    os.rename(db_path, db_path + '.db')  # fix download name to end in .db
+    module.bdnyc_db = astrodb.Database(db_path + '.db')
     astrodb.create_database(filename)
     module.empty_db = astrodb.Database(filename)
 
@@ -156,7 +156,8 @@ def test_references():
 
 
 def test_save():
-    empty_db.save(git=False, directory='tempdata')
+    empty_db.save(git=False, directory='tempempty')
+    bdnyc_db.save(git=False, directory='tempdata')
 
 
 def test_close(monkeypatch):

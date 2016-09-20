@@ -77,14 +77,14 @@ class Database:
             # working directory and generate the database from file
             if dbpath.endswith('.sql'):
                 self.sqlpath = dbpath
-                self.dbpath = dbpath.replace('.sql','.db')
+                self.dbpath = dbpath.replace('.sql', '.db')
                 
                 # If the .db file already exists, rename it with the date
                 if os.path.isfile(self.dbpath):
                     import datetime
                     date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")
                     print("Renaming existing file {} to {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
-                    os.system("mv {} {}".format(self.dbpath, self.dbpath.replace('.db',date+'.db')))
+                    os.system("mv {} {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
                 
                 # Make the new database from the .sql files
                 # First the schema...
@@ -131,7 +131,7 @@ class Database:
             print("Database ready for use")
             
         else:
-            print("Sorry, no such file '{}'".format(dbpath))
+            raise AttributeError("Sorry, no such file '{}'".format(dbpath))
 
     def add_data(self, data, table, delimiter='|', bands='', verbose=False):
         """
@@ -1114,8 +1114,7 @@ class Database:
             Directory name to store individual table data
         """
         from subprocess import call
-        import socket, datetime
-        
+
         # Create the .sql file is it doesn't exist, i.e. if the Database class called a .db file initially
         if not os.path.isfile(self.sqlpath):
             self.sqlpath = self.dbpath.replace('.db', '.sql')
@@ -1132,7 +1131,7 @@ class Database:
         
         # Write the table files to the tabledata directory
         os.system("mkdir -p {}".format(directory))
-        tables = self.query("select tbl_name from sqlite_master where type='table'")['tbl_name']
+        tables = self.query("select tbl_name from sqlite_master where type='table'")#['tbl_name']
         tablepaths = [self.sqlpath]
         for table in tables:
             print('Generating {}...'.format(table))
@@ -1141,7 +1140,8 @@ class Database:
             with open(tablepath, 'w') as f:
                 for line in self.conn.iterdump():
                     if sys.version_info.major == 2:
-                        line = line.decode('utf-8')
+                        # line = line.decode('utf-8')
+                        line = line.encode('utf-8').decode('utf-8')
 
                     line = line.strip()
                     if line.startswith('INSERT INTO "{}"'.format(table)):
