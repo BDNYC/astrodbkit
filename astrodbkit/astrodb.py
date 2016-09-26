@@ -12,6 +12,8 @@ import os
 import sys
 import sqlite3
 import warnings
+import math
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import astropy.io.fits as pf
@@ -75,14 +77,14 @@ class Database:
             # working directory and generate the database from file
             if dbpath.endswith('.sql'):
                 self.sqlpath = dbpath
-                self.dbpath = dbpath.replace('.sql','.db')
+                self.dbpath = dbpath.replace('.sql', '.db')
                 
                 # If the .db file already exists, rename it with the date
                 if os.path.isfile(self.dbpath):
                     import datetime
                     date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")
                     print("Renaming existing file {} to {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
-                    os.system("mv {} {}".format(self.dbpath, self.dbpath.replace('.db',date+'.db')))
+                    os.system("mv {} {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
                 
                 # Make the new database from the .sql files
                 # First the schema...
@@ -118,10 +120,10 @@ class Database:
             self.dict = con.cursor()
             self.dict.row_factory = dict_factory
             self.dict = self.dict.execute
-                
+
             # Make sure the ignore table exists
-            # This is necessary for _compare_records() method to work.
-            self.list("CREATE TABLE IF NOT EXISTS ignore (id INTEGER PRIMARY KEY, id1 INTEGER, id2 INTEGER, tablename TEXT)")
+            self.list(
+                "CREATE TABLE IF NOT EXISTS ignore (id INTEGER PRIMARY KEY, id1 INTEGER, id2 INTEGER, tablename TEXT)")
 
             # Activate foreign key support
             self.list('PRAGMA foreign_keys=ON')
@@ -129,7 +131,7 @@ class Database:
             print("Database ready for use")
             
         else:
-            print("Sorry, no such file '{}'".format(dbpath))
+            raise AttributeError("Sorry, no such file '{}'".format(dbpath))
 
     def add_data(self, data, table, delimiter='|', bands='', verbose=False):
         """
@@ -551,7 +553,7 @@ class Database:
 
     def references(self, criteria, fetch=False, publications='publications', column_name='publication_shortname'):
         """
-        Do a reverse lookup on the **publications** table. Will return every entry that matches that refernce.
+        Do a reverse lookup on the **publications** table. Will return every entry that matches that reference.
 
         Parameters
         ----------
@@ -733,7 +735,10 @@ class Database:
             modified_tables = []
 
             # Merge table by table, starting with SOURCES
-            tables = [tables] or ['sources'] + [t for t in zip(*self.list(
+            if not isinstance(tables, type(list())):
+                tables = [tables]
+
+            tables = tables or ['sources'] + [t for t in zip(*self.list(
                 "SELECT * FROM sqlite_master WHERE name NOT LIKE '%Backup%' AND name!='sqlite_sequence' AND type='table'{}".format(
                     " AND name IN ({})".format("'" + "','".join(tables) + "'") if tables else '')))[1] if
                                               t != 'sources']
@@ -1010,7 +1015,7 @@ class Database:
         else:
             print("No spectrum {} in the SPECTRA table.".format(spectrum_id))
 
-    def query(self, SQL, params='', fmt='array', fetch='all', unpack=False, export='', \
+    def query(self, SQL, params='', fmt='array', fetch='all', unpack=False, export='',
               verbose=False, use_converters=True):
         """
         Wrapper for cursors so data can be retrieved as a list or dictionary from same method
@@ -1095,21 +1100,24 @@ class Database:
         except IOError:
             print('Could not execute: ' + SQL)
 
-    def save(self, branch='auto_db', git=False):
+    def save(self, branch='auto_db', git=False, directory='tabledata'):
         """
         Dump the entire contents of the database into a .sql file and push to Github
         
         Parameters
         ==========
         branch: str
-            The name of the git branch to push to
+            The name of the git branch to push to. Branch must exist or this will fail.
+        git: bool
+            Whether or not to push to GitHub
+        directory: str
+            Directory name to store individual table data
         """
         from subprocess import call
-        import socket, datetime
-        
+
         # Create the .sql file is it doesn't exist, i.e. if the Database class called a .db file initially
         if not os.path.isfile(self.sqlpath):
-            self.sqlpath = self.dbpath.replace('.db','.sql')
+            self.sqlpath = self.dbpath.replace('.db', '.sql')
             os.system('touch {}'.format(self.sqlpath))
             
         # # Write the data to the .sql file
@@ -1119,19 +1127,23 @@ class Database:
                 
         # Alternatively...
         # Write the schema
-        os.system("echo '.output {}\n.schema' | sqlite3 {}".format(self.sqlpath,self.dbpath))
+        os.system("echo '.output {}\n.schema' | sqlite3 {}".format(self.sqlpath, self.dbpath))
         
         # Write the table files to the tabledata directory
-        os.system("mkdir -p tabledata")
+        os.system("mkdir -p {}".format(directory))
         tables = self.query("select tbl_name from sqlite_master where type='table'")['tbl_name']
         tablepaths = [self.sqlpath]
         for table in tables:
             print('Generating {}...'.format(table))
-            tablepath = 'tabledata/{}.sql'.format(table)
+            tablepath = '{0}/{1}.sql'.format(directory, table)
             tablepaths.append(tablepath)
             with open(tablepath, 'w') as f:
                 for line in self.conn.iterdump():
-                    line = line.decode('utf-8').strip()
+                    if sys.version_info.major == 2:
+                        # line = line.decode('utf-8')
+                        line = line.encode('utf-8').decode('utf-8')
+
+                    line = line.strip()
                     if line.startswith('INSERT INTO "{}"'.format(table)):
                         f.write('%s\n' % line.encode('ascii', 'ignore'))
         
@@ -1140,7 +1152,7 @@ class Database:
             user = get_input('Please enter your name : ')
             commit = get_input('Briefly describe the changes you have made : ')
             if user and commit:
-                try:
+                try:  # If not on the same branch, changes are overwritten or aborted: BAD
                     call('git checkout {}'.format(branch), shell=True)
                     call('git pull origin {}'.format(branch), shell=True)
                     call('git add {}'.format(' '.join(tablepaths)), shell=True)
@@ -1166,12 +1178,12 @@ class Database:
         except ValueError:
             print('Table {} not found'.format(table))
 
-    def search(self, criterion, table, columns='', fetch=False):
+    def search(self, criterion, table, columns='', fetch=False, radius=1/60.):
         """
         General search method for tables. For (ra,dec) input in decimal degrees,
-        i.e. '(12.3456,-65.4321)', returns all sources within 1 arcminute.
+        i.e. (12.3456,-65.4321), returns all sources within 1 arcminute, or the specified radius.
         For string input, i.e. 'vb10', returns all sources with case-insensitive partial text
-        ma  tches in columns with 'TEXT' data type. For integer input, i.e. 123, returns all
+        matches in columns with 'TEXT' data type. For integer input, i.e. 123, returns all
         exact matches of columns with INTEGER data type.
 
         Parameters
@@ -1183,9 +1195,12 @@ class Database:
         columns: sequence
             Specific column names to search, otherwise searches all columns
         fetch: bool
-                Return the results of the query as an Astropy table
+            Return the results of the query as an Astropy table
+        radius: float
+            Radius in degrees in which to search for objects if using (ra,dec). Default: 1/60 degree
 
         """
+
         # Get list of columns to search and format properly
         t = self.query("PRAGMA table_info({})".format(table), unpack=True, fmt='table')
         all_columns = t['name'].tolist()
@@ -1206,14 +1221,42 @@ class Database:
             str_check = (str, unicode)
         else:
             str_check = str
+
+        results = ''
+
         if isinstance(criterion, (tuple, list, np.ndarray)):
             try:
-                q = "SELECT * FROM {} WHERE ra BETWEEN ".format(table) \
-                    + str(criterion[0] - 0.01667) + " AND " \
-                    + str(criterion[0] + 0.01667) + " AND dec BETWEEN " \
-                    + str(criterion[1] - 0.01667) + " AND " \
-                    + str(criterion[1] + 0.01667)
-                results = self.query(q, fmt='table')
+                t = self.query('SELECT id,ra,dec FROM sources', fmt='table')
+                df = t.to_pandas()
+                df[['ra', 'dec']] = df[['ra', 'dec']].apply(pd.to_numeric)  # convert everything to floats
+                mask = df['ra'].isnull()
+                df = df[~mask]
+
+                def ang_sep(row, ra1, dec1):
+                    # Using Vicenty Formula (http://en.wikipedia.org/wiki/Great-circle_distance)
+                    # and adapting from astropy's SkyCoord
+
+                    factor = math.pi / 180
+                    sdlon = math.sin((row['ra'] - ra1) * factor)  # RA is longitude
+                    cdlon = math.cos((row['ra'] - ra1) * factor)
+                    slat1 = math.sin(dec1 * factor)  # Dec is latitude
+                    slat2 = math.sin(row['dec'] * factor)
+                    clat1 = math.cos(dec1 * factor)
+                    clat2 = math.cos(row['dec'] * factor)
+
+                    num1 = clat2 * sdlon
+                    num2 = clat1 * slat2 - slat1 * clat2 * cdlon
+                    numerator = math.sqrt(num1 ** 2 + num2 ** 2)
+                    denominator = slat1 * slat2 + clat1 * clat2 * cdlon
+
+                    return np.arctan2(numerator, denominator) / factor
+
+                df['theta'] = df.apply(ang_sep, axis=1, args=(criterion[0], criterion[1]))
+                good = df['theta'] <= radius
+
+                if sum(good) > 0:
+                    params = ", ".join(['{}'.format(s) for s in df[good]['id'].tolist()])
+                    results = self.query('SELECT * FROM sources WHERE id IN ({})'.format(params), fmt='table')
             except:
                 print("Could not search {} table by coordinates {}. Try again.".format(table.upper(), criterion))
 
@@ -1247,7 +1290,7 @@ class Database:
             if results: 
                 pprint(results, title=table.upper())
             else:
-                print("No results found for {} in {} the table.".format(criterion, table.upper()))
+                print("No results found for {} in the {} table.".format(criterion, table.upper()))
 
     def table(self, table, columns, types, constraints='', pk='', new_table=False):
         """

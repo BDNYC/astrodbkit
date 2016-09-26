@@ -2,7 +2,6 @@ language: python
 
 python:
     - 2.7
-    - 3.3
     - 3.4
     - 3.5
 
@@ -21,16 +20,16 @@ env:
         # For this package-template, we include examples of Cython modules,
         # so Cython is required for testing. If your package does not include
         # Cython code, you can set CONDA_DEPENDENCIES=''
-        - CONDA_DEPENDENCIES='matplotlib'
+        - CONDA_DEPENDENCIES='matplotlib pandas'
     matrix:
         # Make sure that egg_info works without dependencies
         # - SETUP_CMD='egg_info'
         # Try all python versions with the latest numpy
         - SETUP_CMD='py.test'
 
-matrix:
-    allow_failures:
-        - python: 3.3
+#matrix:
+#    allow_failures:
+#        - python: 3.3
 
 install:
     - git clone git://github.com/astropy/ci-helpers.git

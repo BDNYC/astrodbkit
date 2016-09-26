@@ -6,24 +6,29 @@
 Welcome to astrodbkit's documentation!
 ======================================
 
-This documentation describes a tool kit of classes, methods and functions useful for CRUD operations and analysis of data from an SQL database.
+This documentation describes a toolkit of classes, methods, and functions useful for CRUD operations and analysis of data from an SQL database.
 
 Getting Started
 ===============
 
-To install, do::
+To install astrodbkit, do::
 
     pip install astrodbkit
+
+Alternatively, you can update your existing installation with::
+
+   pip install --upgrade astrodbkit
 
 Creating a Database
 ===================
 
 To create a database from scratch, do::
 
+    from astrodbkit import astrodb
     dbpath = '/desired/path/to/my_new_database.db'
     astrodb.create_database(dbpath)
     
-Alternatively, you can `download and use the BDNYC Database`_, which contains the astrometry, photometry and spectra for the 198 objects in the `Filippazzo et al. (2015)`_ sample.
+Alternatively, you can `download and use the BDNYC Database`_, which contains the astrometry, photometry, and spectra for the 198 objects in the `Filippazzo et al. (2015)`_ sample.
 
 .. _download and use the BDNYC Database: https://github.com/BDNYC/BDNYCdb
 .. _Filippazzo et al. (2015): http://adslabs.org/adsabs/abs/2015ApJ...810..158F/
@@ -33,18 +38,23 @@ Alternatively, you can `download and use the BDNYC Database`_, which contains th
 Accessing the Database
 ======================
 
-To start using the database, launch iPython, import the module, then initialize the database with the :class:`astrodb.get_db()` class like so::
+To start using the database, launch iPython, import the module, then initialize the database with the :class:`astrodb.Database()` class like so::
 
-    db = astrodb.get_db(dbpath)
+    from astrodbkit import astrodb
+    db = astrodb.Database(dbpath)
 
-Voila! 
+You are now ready to use the database.
 
 Querying the Database
 =====================
 
-Now that you have the database at your fingertips, you’ll want to get some info out of it. 
+Specialized Searches
+--------------------
 
-You can see an inventory of all data for a specific source by passing an integer id to the :py:meth:`~astrodb.get_db.inventory` method::
+Now that you have the database at your fingertips, you’ll want to get some information out of it.
+There are a variety of ways to extract information with astrodbkit.
+
+You can see an inventory of all data for a specific source by passing an integer id to the :py:meth:`~astrodb.Database.inventory` method::
 
     data = db.inventory(86)
 
@@ -54,7 +64,7 @@ This will retrieve the data across all tables with the specified source_id for v
 
 will return a table of the band, magnitude and uncertainty for all records in the sources table with that source_id.
 
-You can search any table in the database with the :py:meth:`~astrodb.get_db.identify` method by supplying a string, integer, or (ra,dec) coordinates along with the table to search. For example, if I want to find all the records in the SOURCES table in the HR 8799 system::
+You can search any table in the database with the :py:meth:`~astrodb.Database.identify` method by supplying a string, integer, or (ra,dec) coordinates along with the table to search. For example, if I want to find all the records in the SOURCES table in the HR 8799 system::
 
     db.search('8799', 'sources')
     
@@ -62,13 +72,38 @@ Or all the papers published by Joe Filippazzo::
 
     db.search('Fili', 'publications')
 
-You can also pass SQL queries wrapped in double-quotes (") to the :py:meth:`~astrodb.get_db.query` method::
+When supplying coordinates, you can also specify the search *radius* to use, in degrees::
 
-    data = db.query( "SQL_query_goes_here" )
+    db.search((338.673, 40.694), 'sources', radius=5)
+
+The :py:meth:`~astrodb.Database.references` method can be used to search for all entries that match the publication record. For example::
+
+   db.references('Cruz03')
+
+
+General Queries
+--------------------
+
+You can also pass SQL queries wrapped in double-quotes (") to the :py:meth:`~astrodb.Database.query` method::
+
+   data = db.query( "SQL_query_goes_here" )
+
+For example, you can get an Astropy table of all the records with a spectral type of L2 with::
+
+   db.query("SELECT * FROM spectral_types WHERE spectral_type=12", fmt='table')
+
+By default, this returns the data as a list of arrays. By setting *fmt='dict'* or *fmt='table'* the data will be returned as a list of Python dictionaries or an Astropy table.
 
 `Here is a detailed post about how to write a SQL query`_.
 
 .. _Here is a detailed post about how to write a SQL query: http://www.bdnyc.org/?p=898
+
+For more general SQL commands beyond SELECT and PRAGMA, you can use the :py:meth:`~astrodb.Database.modify` method.
+
+Adding Data
+===========
+
+
 
 Contents
 ========
