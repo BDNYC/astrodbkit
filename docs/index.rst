@@ -119,6 +119,7 @@ To add data from a file, you want to create a file with the following format::
 
    ra|dec|publication_id
    123|-34|5
+
 Each entry should be its own row, with the first row denoting the columns to be populated.
 Note that the column names in the ascii file need not be in the same order as the table.
 Also, only the column names that match will be added and non-matching or missing column names will be ignored.
@@ -151,6 +152,7 @@ by the :py:meth:`~astrodb.Database.query` method when the filename ends in **.xm
    data = db.query(txt, export='votable.xml')
 
 .. _TOPCAT: http://www.star.bris.ac.uk/~mbt/topcat/
+
 You can import and call votools directly, which has additional options you can set.
 
 .. note:: Special characters (such as accents or greek letters) can cause astropy and thus file output to fail in Python 2.
