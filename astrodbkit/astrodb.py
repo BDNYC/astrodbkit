@@ -243,6 +243,82 @@ class Database:
         else:
             print('Please check your input: {}'.format(entry))
 
+    def add_foreign_key(self, table, parent, key_child, key_parent, verbose=True):
+        """
+        Add foreign key (**key_parent** from **parent**) to **table** column **key_child**
+
+        Parameters
+        ----------
+        table: string
+            The name of the table to modify. This is the child table.
+        parent: string or list of strings
+            The name of the reference table. This is the parent table.
+        key_child: string or list of strings
+            Column in **table** to set as foreign key. This is the child key.
+        key_parent: string or list of strings
+            Column in **parent** that the foreign key refers to. This is the parent key.
+        verbose: bool, optional
+            Verbose output
+        """
+
+        # Temporarily turn off foreign keys
+        self.list('PRAGMA foreign_keys=OFF')
+
+        metadata = self.query("PRAGMA table_info({})".format(table), fmt='table')
+        columns, types, required, pk = [np.array(metadata[n]) for n in ['name', 'type', 'notnull', 'pk']]
+
+        # Set constraints
+        constraints = []
+        for elem in required:
+            if elem > 0:
+                constraints.append('NOT NULL')
+            else:
+                constraints.append('')
+
+        # Set PRIMARY KEY columns
+        ind, = np.where(pk >= 1)
+        for i in ind:
+            constraints[i] += ' UNIQUE'  # Add UNIQUE constraint to primary keys
+        pk_names = columns[ind]
+
+        try:
+            # Rename the old table and create a new one
+            self.list("DROP TABLE IF EXISTS TempOldTable_foreign")
+            self.list("ALTER TABLE {0} RENAME TO TempOldTable_foreign".format(table))
+
+            # Re-create the table specifying the FOREIGN KEY
+            sqltxt = "CREATE TABLE {0} ({1}".format(table, ', '.join(['{} {} {}'.format(c, t, r)
+                                                                      for c, t, r in zip(columns, types, constraints)]))
+            sqltxt += ', PRIMARY KEY({})'.format(', '.join([elem for elem in pk_names]))
+            if isinstance(key_child, type(list())):
+                for kc, p, kp in zip(key_child, parent, key_parent):
+                    sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(kc, p, kp)
+            else:
+                sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(key_child, parent, key_parent)
+            sqltxt += ' )'
+
+            self.list(sqltxt)
+
+            # Populate the new table and drop the old one
+            tempdata = self.query("PRAGMA table_info(TempOldTable_foreign)", fmt='table')
+            old_columns = [c for c in tempdata['name'] if c in columns]
+            self.list("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable_foreign".format(table, ','.join(old_columns)))
+            self.list("DROP TABLE TempOldTable_foreign")
+
+            if verbose:
+                print('Successfully added foreign key.')
+                t = self.query('SELECT name, sql FROM sqlite_master', fmt='table')
+                print(t[t['name'] == table]['sql'][0].replace(',', ',\n'))
+
+        except:
+            print('Error attempting to add foreign key.')
+            self.list("DROP TABLE IF EXISTS {0}".format(table))
+            self.list("ALTER TABLE TempOldTable_foreign RENAME TO {0}".format(table))
+            raise sqlite3.IntegrityError('Failed to add foreign key')
+
+        # Reactivate foreign keys
+        self.list('PRAGMA foreign_keys=ON')
+
     def clean_up(self, table, verbose=False):
         """
         Removes exact duplicates, blank records or data without a *source_id* from the specified **table**.
@@ -252,6 +328,8 @@ class Database:
         ----------
         table: str
             The name of the table to remove duplicates, blanks, and data without source attributions.
+        verbose: bool
+            Print out some diagnostic messages
 
         """
         # Get the table info and all the records
@@ -313,7 +391,8 @@ class Database:
             if SQL[-5:] == ' AND ':
                 SQL = SQL[:-5]
 
-            if verbose: print('\nSearching for duplicates with: {}\n'.format(SQL))
+            if verbose:
+                print('\nSearching for duplicates with: {}\n'.format(SQL))
 
             duplicate = self.query(SQL, fetch='one')
 
@@ -443,7 +522,8 @@ class Database:
 
     def inventory(self, source_id, fetch=False, fmt='table'):
         """
-        Prints a summary of all objects in the database. Input string or list of strings in **ID** or **unum** for specific objects.
+        Prints a summary of all objects in the database. Input string or list of strings in **ID** or **unum**
+        for specific objects.
 
         Parameters
         ----------
@@ -820,7 +900,7 @@ class Database:
         SQL: str
             The SQL query to execute
         params: sequence
-            Mimicks the native parameter substitution of sqlite3
+            Mimics the native parameter substitution of sqlite3
         verbose: bool
                 Prints the number of modified records
         """
@@ -835,8 +915,7 @@ class Database:
             if verbose:
                 print('Number of records modified: {}'.format(self.list("SELECT changes()").fetchone()[0] or '0'))
 
-
-    def output_spectrum(self, spectrum, filepath, header={}, original=False):
+    def output_spectrum(self, spectrum, filepath, header={}):
         """
         Prints a file of the given spectrum to an ascii file with specified filepath.
 
@@ -846,8 +925,6 @@ class Database:
             The id from the SPECTRA table or a [w,f,e] sequence
         filepath: str
             The path of the file to print the data to.
-        original: bool
-            Return the file in the original uploaded form
         header: dict
                 A dictionary of metadata to add of update in the header
 
@@ -980,22 +1057,24 @@ class Database:
     def query(self, SQL, params='', fmt='array', fetch='all', unpack=False, export='', \
               verbose=False, use_converters=True):
         """
-        Wrapper for cursors so data can be retrieved as a list or dictionary from same method
+        Wrapper for cursors so data can be retrieved as a list or dictionary from same method.
 
         Parameters
         ----------
         SQL: str
             The SQL query to execute
         params: sequence
-            Mimicks the native parameter substitution of sqlite3
+            Mimics the native parameter substitution of sqlite3
         fmt: str
             Returns the data as a dictionary, array, or astropy.table given 'dict', 'array', or 'table'
+        fetch: str
+            String indicating whether to return **all** results or just **one**
         unpack: bool
             Returns the transpose of the data
         export: str
             The file path of the ascii file to which the data should be exported
         verbose: bool
-            print(the data also
+            print the data as well
         use_converters: bool
             Apply converters to columns with custom data types
 
@@ -1298,81 +1377,6 @@ class Database:
              types, and constraints are formatted properly.'.format(table.upper(), \
                                                                     'created' if new_table else 'modified'))
 
-    def add_foreign_key(self, table, parent, key_child, key_parent, verbose=True):
-        """
-        Add foreign key (**key_parent** from **parent**) to **table** column **key_child**
-
-        Parameters
-        ----------
-        table: string
-            The name of the table to modify. This is the child table.
-        parent: string or list of strings
-            The name of the reference table. This is the parent table.
-        key_child: string or list of strings
-            Column in **table** to set as foreign key. This is the child key.
-        key_parent: string or list of strings
-            Column in **parent** that the foreign key refers to. This is the parent key.
-        verbose: bool, optional
-            Verbose output
-        """
-
-        # Temporarily turn off foreign keys
-        self.list('PRAGMA foreign_keys=OFF')
-
-        metadata = self.query("PRAGMA table_info({})".format(table), fmt='table')
-        columns, types, required, pk = [np.array(metadata[n]) for n in ['name', 'type', 'notnull', 'pk']]
-
-        # Set constraints
-        constraints = []
-        for elem in required:
-            if elem > 0:
-                constraints.append('NOT NULL')
-            else:
-                constraints.append('')
-
-        # Set PRIMARY KEY columns
-        ind, = np.where(pk >= 1)
-        for i in ind:
-            constraints[i] += ' UNIQUE'  # Add UNIQUE constraint to primary keys
-        pk_names = columns[ind]
-
-        try:
-            # Rename the old table and create a new one
-            self.list("DROP TABLE IF EXISTS TempOldTable_foreign")
-            self.list("ALTER TABLE {0} RENAME TO TempOldTable_foreign".format(table))
-
-            # Re-create the table specifying the FOREIGN KEY
-            sqltxt = "CREATE TABLE {0} ({1}".format(table, ', '.join(['{} {} {}'.format(c, t, r)
-                                                                      for c, t, r in zip(columns, types, constraints)]))
-            sqltxt += ', PRIMARY KEY({})'.format(', '.join([elem for elem in pk_names]))
-            if isinstance(key_child, type(list())):
-                for kc, p, kp in zip(key_child, parent, key_parent):
-                    sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(kc, p, kp)
-            else:
-                sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(key_child, parent, key_parent)
-            sqltxt += ' )'
-
-            self.list(sqltxt)
-
-            # Populate the new table and drop the old one
-            tempdata = self.query("PRAGMA table_info(TempOldTable_foreign)", fmt='table')
-            old_columns = [c for c in tempdata['name'] if c in columns]
-            self.list("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable_foreign".format(table, ','.join(old_columns)))
-            self.list("DROP TABLE TempOldTable_foreign")
-
-            if verbose:
-                print('Successfully added foreign key.')
-                t = self.query('SELECT name, sql FROM sqlite_master', fmt='table')
-                print(t[t['name'] == table]['sql'][0].replace(',', ',\n'))
-
-        except:
-            print('Error attempting to add foreign key.')
-            self.list("DROP TABLE IF EXISTS {0}".format(table))
-            self.list("ALTER TABLE TempOldTable_foreign RENAME TO {0}".format(table))
-            raise sqlite3.IntegrityError('Failed to add foreign key')
-
-        # Reactivate foreign keys
-        self.list('PRAGMA foreign_keys=ON')
 
     def _explicit_query(self, SQL, use_converters=True):
         """
@@ -1390,7 +1394,7 @@ class Database:
 
         Returns
         -------
-        (SQL, columns): (str, sequenc   e)
+        (SQL, columns): (str, sequence)
             The new SQLite string to use in the query and the ordered column names
 
         """
@@ -1811,7 +1815,7 @@ sqlite3.register_converter("SPECTRUM", convert_spectrum)
 
 def pprint(data, names='', title='', formats={}):
     """
-    Prints tables with a little bit 'o formatting
+    Prints tables with a bit of formatting
 
     Parameters
     ----------
