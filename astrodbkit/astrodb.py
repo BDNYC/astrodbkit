@@ -553,7 +553,7 @@ class Database:
 
     def references(self, criteria, fetch=False, publications='publications', column_name='publication_shortname'):
         """
-        Do a reverse lookup on the **publications** table. Will return every entry that matches that refernce.
+        Do a reverse lookup on the **publications** table. Will return every entry that matches that reference.
 
         Parameters
         ----------
@@ -1015,7 +1015,7 @@ class Database:
         else:
             print("No spectrum {} in the SPECTRA table.".format(spectrum_id))
 
-    def query(self, SQL, params='', fmt='array', fetch='all', unpack=False, export='', \
+    def query(self, SQL, params='', fmt='array', fetch='all', unpack=False, export='',
               verbose=False, use_converters=True):
         """
         Wrapper for cursors so data can be retrieved as a list or dictionary from same method
