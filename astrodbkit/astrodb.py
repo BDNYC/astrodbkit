@@ -520,6 +520,93 @@ class Database:
         else:
             print("\nInvalid command: {}\nTry again or type 'help' or 'abort'.\n".format(replace))
 
+    def _explicit_query(self, SQL, use_converters=True):
+        """
+        Sorts the column names so they are returned in the same order they are queried. Also turns
+        ambiguous SELECT statements into explicit SQLite language in case column names are not unique.
+
+        HERE BE DRAGONS!!! Bad bad bad. This method needs to be reworked.
+
+        Parameters
+        ----------
+        SQL: str
+            The SQLite query to parse
+        use_converters: bool
+            Apply converters to columns with custom data types
+
+        Returns
+        -------
+        (SQL, columns): (str, sequence)
+            The new SQLite string to use in the query and the ordered column names
+
+        """
+        try:
+            # If field names are given, sort so that they come out in the same order they are fetched
+            if 'select' in SQL.lower() and 'from' in SQL.lower():
+
+                # Make a dictionary of the table aliases
+                tdict = {}
+                from_clause = SQL.lower().split('from ')[-1].split(' where')[0]
+                tables = [j for k in [i.split(' on ') for i in from_clause.split(' join ')] for j in k if '=' not in j]
+
+                for t in tables:
+                    t = t.replace('as', '')
+                    try:
+                        name, alias = t.split()
+                        tdict[alias] = name
+                    except:
+                        tdict[t] = t
+
+                # Get all the column names and dtype placeholders
+                columns = \
+                SQL.replace(' ', '').lower().split('distinct' if 'distinct' in SQL.lower() else 'select')[1].split(
+                    'from')[0].split(',')
+
+                # Replace * with the field names
+                for n, col in enumerate(columns):
+                    if '.' in col:
+                        t, col = col.split('.')
+                    else:
+                        t = tables[0]
+
+                    if '*' in col:
+                        col = np.array(self.list("PRAGMA table_info({})".format(tdict.get(t))).fetchall()).T[1]
+                    else:
+                        col = [col]
+
+                    columns[n] = ["{}.{}".format(t, c) if len(tables) > 1 else c for c in col]
+
+                # Flatten the list of columns and dtypes
+                columns = [j for k in columns for j in k]
+
+                # Get the dtypes
+                dSQL = "SELECT " \
+                       + ','.join(["typeof({})".format(col) for col in columns]) \
+                       + ' FROM ' + SQL.replace('from', 'FROM').split('FROM')[-1]
+                if use_converters:
+                    dtypes = [None] * len(columns)
+                else:
+                    dtypes = self.list(dSQL).fetchone()
+
+                # Reconstruct SQL query
+                SQL = "SELECT {}".format('DISTINCT ' if 'distinct' in SQL.lower() else '') \
+                      + (','.join(["{0} AS '{0}'".format(col) for col in columns]) \
+                             if use_converters else ','.join(["{1}{0}{2} AS '{0}'".format(col,
+                                                                                          'CAST(' if dt != 'null' else '',
+                                                                                          ' AS {})'.format(
+                                                                                              dt) if dt != 'null' else '') \
+                                                              for dt, col in zip(dtypes, columns)])) \
+                      + ' FROM ' \
+                      + SQL.replace('from', 'FROM').split('FROM')[-1]
+
+            elif 'pragma' in SQL.lower():
+                columns = ['cid', 'name', 'type', 'notnull', 'dflt_value', 'pk']
+
+            return SQL, columns
+
+        except:
+            return SQL, ''
+
     def inventory(self, source_id, fetch=False, fmt='table'):
         """
         Prints a summary of all objects in the database. Input string or list of strings in **ID** or **unum**
@@ -593,72 +680,6 @@ class Database:
 
         if fetch: return data_tables
 
-    def references(self, criteria, fetch=False, publications='publications', column_name='publication_shortname'):
-        """
-        Do a reverse lookup on the **publications** table. Will return every entry that matches that refernce.
-
-        Parameters
-        ----------
-        criteria: int or str
-            The id from the PUBLICATIONS table whose data across all tables is to be printed.
-        fetch: bool
-            Return the results.
-        publications: str
-            Name of the publications table
-        column_name: str
-            Name of the reference column in other tables
-
-        Returns
-        -------
-        data_tables: dict
-             Returns a dictionary of astropy tables with the table name as the keys.
-
-        """
-
-        data_tables = dict()
-
-        # If an ID is provided but the column name is publication shortname, grab the shortname
-        if isinstance(criteria, type(1)) and column_name == 'publication_shortname':
-            t = self.query("SELECT * FROM {} WHERE id={}".format(publications, criteria), fmt='table')
-            if len(t) > 0:
-                criteria = t['shortname'][0]
-            else:
-                print('No match found for {}'.format(criteria))
-                return
-
-        t = self.query("SELECT * FROM sqlite_master WHERE type='table'", fmt='table')
-        all_tables = t['name'].tolist()
-        for table in ['sources'] + [t for t in all_tables if
-                                    t not in ['publications', 'sqlite_sequence', 'sources']]:
-
-            # Get the columns, pull out redundant ones, and query the table for this source's data
-            t = self.query("PRAGMA table_info({})".format(table), fmt='table')
-            columns = np.array(t['name'])
-            types = np.array(t['type'])
-
-            # Only get simple data types and exclude redundant ones for nicer printing
-            columns = columns[
-                ((types == 'REAL') | (types == 'INTEGER') | (types == 'TEXT')) & (columns != column_name)]
-
-            # Query the table
-            try:
-                data = self.query("SELECT {} FROM {} WHERE {}='{}'".format(','.join(columns), table,
-                                                                         column_name, criteria), fmt='table')
-            except:
-                data = None
-
-            # If there's data for this table, save it
-            if data:
-                if fetch:
-                    data_tables[table] = self.query(
-                        "SELECT {} FROM {} WHERE {}='{}'".format(
-                            ','.join(columns), table, column_name, criteria), fmt='table', fetch=True)
-                else:
-                    data = data[list(columns)]
-                    pprint(data, title=table.upper())
-
-        if fetch: return data_tables
-
     def lookup(self, criteria, table, columns=''):
         """
         Returns a table of records from *table* the same length as *criteria*
@@ -708,7 +729,6 @@ class Database:
             table[col].mask = msk
         
         return table
-
 
     def _lowest_rowids(self, table, limit):
         """
@@ -1141,6 +1161,72 @@ class Database:
         except IOError:
             print('Could not execute: ' + SQL)
 
+    def references(self, criteria, publications='publications', column_name='publication_shortname', fetch=False):
+        """
+        Do a reverse lookup on the **publications** table. Will return every entry that matches that reference.
+
+        Parameters
+        ----------
+        criteria: int or str
+            The id from the PUBLICATIONS table whose data across all tables is to be printed.
+        publications: str
+            Name of the publications table
+        column_name: str
+            Name of the reference column in other tables
+        fetch: bool
+            Return the results.
+
+        Returns
+        -------
+        data_tables: dict
+             Returns a dictionary of astropy tables with the table name as the keys.
+
+        """
+
+        data_tables = dict()
+
+        # If an ID is provided but the column name is publication shortname, grab the shortname
+        if isinstance(criteria, type(1)) and column_name == 'publication_shortname':
+            t = self.query("SELECT * FROM {} WHERE id={}".format(publications, criteria), fmt='table')
+            if len(t) > 0:
+                criteria = t['shortname'][0]
+            else:
+                print('No match found for {}'.format(criteria))
+                return
+
+        t = self.query("SELECT * FROM sqlite_master WHERE type='table'", fmt='table')
+        all_tables = t['name'].tolist()
+        for table in ['sources'] + [t for t in all_tables if
+                                    t not in ['publications', 'sqlite_sequence', 'sources']]:
+
+            # Get the columns, pull out redundant ones, and query the table for this source's data
+            t = self.query("PRAGMA table_info({})".format(table), fmt='table')
+            columns = np.array(t['name'])
+            types = np.array(t['type'])
+
+            # Only get simple data types and exclude redundant ones for nicer printing
+            columns = columns[
+                ((types == 'REAL') | (types == 'INTEGER') | (types == 'TEXT')) & (columns != column_name)]
+
+            # Query the table
+            try:
+                data = self.query("SELECT {} FROM {} WHERE {}='{}'".format(','.join(columns), table,
+                                                                         column_name, criteria), fmt='table')
+            except:
+                data = None
+
+            # If there's data for this table, save it
+            if data:
+                if fetch:
+                    data_tables[table] = self.query(
+                        "SELECT {} FROM {} WHERE {}='{}'".format(
+                            ','.join(columns), table, column_name, criteria), fmt='table', fetch=True)
+                else:
+                    data = data[list(columns)]
+                    pprint(data, title=table.upper())
+
+        if fetch: return data_tables
+
     def schema(self, table):
         """
         Print the table schema
@@ -1376,94 +1462,6 @@ class Database:
             print('The {} table has not been {}. Please make sure your table columns, \
              types, and constraints are formatted properly.'.format(table.upper(), \
                                                                     'created' if new_table else 'modified'))
-
-
-    def _explicit_query(self, SQL, use_converters=True):
-        """
-        Sorts the column names so they are returned in the same order they are queried. Also turns
-        ambiguous SELECT statements into explicit SQLite language in case column names are not unique.
-
-        HERE BE DRAGONS!!! Bad bad bad. This method needs to be reworked.
-
-        Parameters
-        ----------
-        SQL: str
-            The SQLite query to parse
-        use_converters: bool
-            Apply converters to columns with custom data types
-
-        Returns
-        -------
-        (SQL, columns): (str, sequence)
-            The new SQLite string to use in the query and the ordered column names
-
-        """
-        try:
-            # If field names are given, sort so that they come out in the same order they are fetched
-            if 'select' in SQL.lower() and 'from' in SQL.lower():
-
-                # Make a dictionary of the table aliases
-                tdict = {}
-                from_clause = SQL.lower().split('from ')[-1].split(' where')[0]
-                tables = [j for k in [i.split(' on ') for i in from_clause.split(' join ')] for j in k if '=' not in j]
-
-                for t in tables:
-                    t = t.replace('as', '')
-                    try:
-                        name, alias = t.split()
-                        tdict[alias] = name
-                    except:
-                        tdict[t] = t
-
-                # Get all the column names and dtype placeholders
-                columns = \
-                SQL.replace(' ', '').lower().split('distinct' if 'distinct' in SQL.lower() else 'select')[1].split(
-                    'from')[0].split(',')
-
-                # Replace * with the field names
-                for n, col in enumerate(columns):
-                    if '.' in col:
-                        t, col = col.split('.')
-                    else:
-                        t = tables[0]
-
-                    if '*' in col:
-                        col = np.array(self.list("PRAGMA table_info({})".format(tdict.get(t))).fetchall()).T[1]
-                    else:
-                        col = [col]
-
-                    columns[n] = ["{}.{}".format(t, c) if len(tables) > 1 else c for c in col]
-
-                # Flatten the list of columns and dtypes
-                columns = [j for k in columns for j in k]
-
-                # Get the dtypes
-                dSQL = "SELECT " \
-                       + ','.join(["typeof({})".format(col) for col in columns]) \
-                       + ' FROM ' + SQL.replace('from', 'FROM').split('FROM')[-1]
-                if use_converters:
-                    dtypes = [None] * len(columns)
-                else:
-                    dtypes = self.list(dSQL).fetchone()
-
-                # Reconstruct SQL query
-                SQL = "SELECT {}".format('DISTINCT ' if 'distinct' in SQL.lower() else '') \
-                      + (','.join(["{0} AS '{0}'".format(col) for col in columns]) \
-                             if use_converters else ','.join(["{1}{0}{2} AS '{0}'".format(col,
-                                                                                          'CAST(' if dt != 'null' else '',
-                                                                                          ' AS {})'.format(
-                                                                                              dt) if dt != 'null' else '') \
-                                                              for dt, col in zip(dtypes, columns)])) \
-                      + ' FROM ' \
-                      + SQL.replace('from', 'FROM').split('FROM')[-1]
-
-            elif 'pragma' in SQL.lower():
-                columns = ['cid', 'name', 'type', 'notnull', 'dflt_value', 'pk']
-
-            return SQL, columns
-
-        except:
-            return SQL, ''
 
 
 class Spectrum:
@@ -2026,4 +2024,4 @@ def _autofill_spec_record(record):
 
 
 type_dict = {'INTEGER': np.dtype('int64'), 'REAL': np.dtype('float64'), 'TEXT': np.dtype('S128'),
-             'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('S164'), 'BOOLEAN': np.dtype('bool')}
+             'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('S256'), 'BOOLEAN': np.dtype('bool')}
