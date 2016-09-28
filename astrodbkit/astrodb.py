@@ -2025,5 +2025,5 @@ def _autofill_spec_record(record):
     return record
 
 
-type_dict = {'INTEGER': np.dtype('int64'), 'REAL': np.dtype('float64'), 'TEXT': np.dtype('S64'),
+type_dict = {'INTEGER': np.dtype('int64'), 'REAL': np.dtype('float64'), 'TEXT': np.dtype('S128'),
              'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('S164'), 'BOOLEAN': np.dtype('bool')}
