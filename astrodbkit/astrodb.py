@@ -2027,6 +2027,3 @@ def _autofill_spec_record(record):
 
 type_dict = {'INTEGER': np.dtype('int64'), 'REAL': np.dtype('float64'), 'TEXT': np.dtype('object'),
              'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('object'), 'BOOLEAN': np.dtype('bool')}
-# TODO: Consider dtype of object for TEXT/SPECTRUM fields
-# type_dict = {'INTEGER': np.dtype('int64'), 'REAL': np.dtype('float64'), 'TEXT': np.dtype('S128'),
-#              'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('S256'), 'BOOLEAN': np.dtype('bool')}
