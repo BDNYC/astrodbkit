@@ -1531,7 +1531,7 @@ def adapt_array(arr):
     """
     out = io.BytesIO()
     np.save(out, arr), out.seek(0)
-    return buffer(out.read())
+    return buffer(out.read())  # TODO: Fix for Python 3
 
 
 def convert_array(array):
@@ -1866,9 +1866,10 @@ def pprint(data, names='', title='', formats={}):
             print(' '.join([str(i[key]).decode('utf-8')[:max_length].rjust(str_lengths[key])
                            if i[key] else '-'.rjust(str_lengths[key]) for key in pdata.keys()]))
 
+
 def clean_header(header):
     try:
-        header = pf.open(File, ignore_missing_end=True)[0].header
+        header = pf.open(File, ignore_missing_end=True)[0].header  # TODO: Fix missing File reference
         new_header = pf.Header()
         for x, y, z in header.cards: new_header[x.replace('.', '_').replace('#', '')] = (y, z)
         header = pf.PrimaryHDU(header=new_header).header
@@ -1897,8 +1898,9 @@ def _help():
 
 def scrub(data, units=False):
     """
-    For input data [w,f,e] or [w,f] returns the list with NaN, negative, and zero flux (and corresponsing wavelengths and errors) removed.
-        """
+    For input data [w,f,e] or [w,f] returns the list with NaN, negative, and zero flux
+    (and corresponding wavelengths and errors) removed.
+    """
     units = [i.unit if hasattr(i, 'unit') else 1 for i in data]
     data = [np.asarray(i.value if hasattr(i, 'unit') else i, dtype=np.float32) for i in data if
             isinstance(i, np.ndarray)]
@@ -2023,5 +2025,8 @@ def _autofill_spec_record(record):
     return record
 
 
-type_dict = {'INTEGER': np.dtype('int64'), 'REAL': np.dtype('float64'), 'TEXT': np.dtype('S128'),
-             'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('S256'), 'BOOLEAN': np.dtype('bool')}
+type_dict = {'INTEGER': np.dtype('int64'), 'REAL': np.dtype('float64'), 'TEXT': np.dtype('object'),
+             'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('object'), 'BOOLEAN': np.dtype('bool')}
+# TODO: Consider dtype of object for TEXT/SPECTRUM fields
+# type_dict = {'INTEGER': np.dtype('int64'), 'REAL': np.dtype('float64'), 'TEXT': np.dtype('S128'),
+#              'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('S256'), 'BOOLEAN': np.dtype('bool')}
