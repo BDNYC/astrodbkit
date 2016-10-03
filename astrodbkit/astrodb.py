@@ -1086,7 +1086,8 @@ class Database:
         params: sequence
             Mimics the native parameter substitution of sqlite3
         fmt: str
-            Returns the data as a dictionary, array, or astropy.table given 'dict', 'array', or 'table'
+            Returns the data as a dictionary, array, astropy.table, or pandas.Dataframe
+            given 'dict', 'array', 'table', or 'pandas'
         fetch: str
             String indicating whether to return **all** results or just **one**
         unpack: bool
@@ -1147,9 +1148,17 @@ class Database:
 
                     # Or return the results
                     else:
-                        if fetch == 'one': dictionary, array = dictionary[0], array if unpack else np.array(
-                            list(array[0]))
-                        return table if fmt == 'table' else dictionary if fmt == 'dict' else array
+                        if fetch == 'one':
+                            dictionary, array = dictionary[0], array if unpack else np.array(list(array[0]))
+
+                        if fmt == 'table':
+                            return table
+                        elif fmt == 'dict':
+                            return dictionary
+                        elif fmt == 'pandas':
+                            return table.to_pandas()
+                        else:
+                            return array
 
                 else:
                     return
