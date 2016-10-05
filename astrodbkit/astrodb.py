@@ -306,7 +306,7 @@ class Database:
             self.list("DROP TABLE TempOldTable_foreign")
 
             if verbose:
-                print('Successfully added foreign key.')
+                # print('Successfully added foreign key.')
                 t = self.query('SELECT name, sql FROM sqlite_master', fmt='table')
                 print(t[t['name'] == table]['sql'][0].replace(',', ',\n'))
 
@@ -606,6 +606,20 @@ class Database:
 
         except:
             return SQL, ''
+
+    def info(self):
+        """
+        Prints out information for the loaded database, namely the available tables and the number of entries for each.
+        """
+        t = self.query("SELECT * FROM sqlite_master WHERE type='table'", fmt='table')
+        all_tables = t['name'].tolist()
+        print('Database Inventory')
+        print('==================')
+        for table in ['sources'] + [t for t in all_tables if
+                                    t not in ['sources', 'sqlite_sequence']]:
+            x = self.query('select count() from {}'.format(table), fmt='array', fetch='one')
+            if x is None: continue
+            print('{}: {}'.format(table.upper(), x[0]))
 
     def inventory(self, source_id, fetch=False, fmt='table'):
         """
@@ -1382,7 +1396,7 @@ class Database:
         pk: string or list
             Name(s) of the primary key(s) if other than ID
         new_table: bool
-                Create a new table
+            Create a new table
 
         """
         goodtogo = True
