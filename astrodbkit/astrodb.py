@@ -1146,7 +1146,8 @@ class Database:
                     line = line.strip()
                     if line.startswith('INSERT INTO "{}"'.format(table)):
                         f.write('%s\n' % line.encode('ascii', 'ignore'))
-        
+
+        # TODO: Remove git integration, just output some commands for the user to take if they want to
         # Collect name and commit message from the user and push to Github
         if git:
             user = get_input('Please enter your name : ')
@@ -1653,6 +1654,7 @@ def convert_array(array):
     return np.load(out)
 
 
+# TODO: Eliminate this, not being used anymore
 def adapt_spectrum(spec):
     """
     Adapts a SPECTRUM object into a string to put into the database
