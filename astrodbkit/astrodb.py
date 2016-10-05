@@ -87,6 +87,8 @@ class Database:
             self.close = self.conn.close
             self.list = con.cursor().execute
 
+            self.dbpath = dbpath
+
             # Make dictionary
             def dict_factory(cursor, row):
                 d = {}
@@ -1378,6 +1380,39 @@ class Database:
                 pprint(results, title=table.upper())
             else:
                 print("No results found for {} in the {} table.".format(criterion, table.upper()))
+
+    def snapshot(self, name_db='export.db', version=1.0):
+        """
+        Function to generate a snapshot of the database by version number.
+
+        Parameters
+        ----------
+        name_db: string
+            Name of the new database (Default: export.db)
+        version: float
+            Version number to export (Default: 1.0)
+        """
+
+        # Create a new database from existing database schema
+        t, = self.query("select sql from sqlite_master where type = 'table'", unpack=True)
+        schema = ';\n'.join(t) + ';'
+        os.system("sqlite3 {} '{}'".format(name_db, schema))
+
+        # Attach database to newly created database
+        db = Database(name_db)
+        db.list('PRAGMA foreign_keys=OFF')  # Temporarily deactivate foreign keys for the snapshot
+        db.list("ATTACH DATABASE '{}' AS orig".format(self.dbpath))
+
+        # For each table in database, insert records if they match version number
+        t = db.query("SELECT * FROM sqlite_master WHERE type='table'", fmt='table')
+        all_tables = t['name'].tolist()
+        for table in [t for t in all_tables if t not in ['sqlite_sequence']]:
+            db.modify("INSERT INTO {0} SELECT * FROM orig.{0} WHERE orig.version>={1}".format(table, version))
+
+        # Detach original database
+        db.list('DETACH DATABASE orig')
+        db.list('PRAGMA foreign_keys=ON')
+        db.close()
 
     def table(self, table, columns, types, constraints='', pk='', new_table=False):
         """
