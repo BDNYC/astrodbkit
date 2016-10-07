@@ -71,7 +71,8 @@ class Database:
         """
         if os.path.isfile(dbpath):
             
-            # Alternatively, just list the directory with the schema and .sql files and require that dbpath is the schema file, then load the tables individually
+            # Alternatively, just list the directory with the schema and .sql files and require that dbpath
+            # is the schema file, then load the tables individually
             
             # If it is a .sql file, create an empty database in the 
             # working directory and generate the database from file
@@ -95,12 +96,14 @@ class Database:
                 tables = os.popen('sqlite3 {} ".tables"'.format(self.dbpath)).read().replace('\n',' ').split()
                 for table in tables:
                     os.system('sqlite3 {0} ".read tabledata/{1}.sql"'.format(self.dbpath, table))
-            
-            else:
+            elif dbpath.endswith('.db'):
                 self.sqlpath = dbpath.replace('.db', '.sql')
                 self.dbpath = dbpath
+            else:
+                self.sqlpath = dbpath + '.sql'
+                self.dbpath = dbpath
             
-            # Create .sql scema file if it doesn't exist
+            # Create .sql schema file if it doesn't exist
             os.system('touch {}'.format(self.sqlpath.replace(' ', '\ ')))
                 
             # Create connection

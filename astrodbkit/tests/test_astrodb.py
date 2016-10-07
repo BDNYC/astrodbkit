@@ -13,8 +13,7 @@ def setup_module(module):
         db_path = download_file("http://github.com/BDNYC/BDNYCdb/raw/master/bdnyc_database.db")
     except:
         db_path = download_file("http://github.com/BDNYC/BDNYCdb/raw/master/BDNYCv1.0.db")
-    os.rename(db_path, db_path + '.db')  # fix download name to end in .db
-    module.bdnyc_db = astrodb.Database(db_path + '.db')
+    module.bdnyc_db = astrodb.Database(db_path)
     astrodb.create_database(filename)
     module.empty_db = astrodb.Database(filename)
 
