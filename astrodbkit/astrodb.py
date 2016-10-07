@@ -2,6 +2,11 @@
 # encoding: utf-8
 # Author: Joe Filippazzo, jcfilippazzo@gmail.com
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 import io
 import os
 import sys
@@ -49,20 +54,6 @@ def create_database(dbpath):
 
 
 class Database:
-    """
-    Initialize the database.
-
-    Parameters
-    ----------
-    dbpath: str
-        The path to the database file.
-
-    Returns
-    -------
-    object
-        The database object
-    """
-
     def __init__(self, dbpath):
         """
         Initialize the database.
@@ -107,8 +98,10 @@ class Database:
             # Activate foreign key support
             self.list('PRAGMA foreign_keys=ON')
 
+            print("Database ready for use")
+
         else:
-            print("Sorry, no such file '{}'".format(dbpath))
+            raise AttributeError("Sorry, no such file '{}'".format(dbpath))
 
     def add_data(self, data, table, delimiter='|', bands='', verbose=False):
         """
@@ -1121,7 +1114,7 @@ class Database:
             The result of the database query
         """
         try:
-            # Restricy queries to SELECT and PRAGMA statements
+            # Restrict queries to SELECT and PRAGMA statements
             if SQL.lower().startswith('select') or SQL.lower().startswith('pragma'):
 
                 # Make the query explicit so that column and table names are preserved
@@ -1626,6 +1619,7 @@ def convert_array(array):
     return np.load(out)
 
 
+# TODO: Eliminate this, not being used anymore
 def adapt_spectrum(spec):
     """
     Adapts a SPECTRUM object into a string to put into the database

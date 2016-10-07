@@ -1,10 +1,9 @@
 import pytest
 import tempfile
-import os, sys
+import os
 from astropy.utils.data import download_file
 from .. import astrodb
 from sqlite3 import IntegrityError
-import io
 
 filename = os.path.join(tempfile.mkdtemp(), 'empty_db.db')
 
