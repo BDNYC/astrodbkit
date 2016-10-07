@@ -20,7 +20,7 @@ import astropy.io.fits as pf
 import astropy.io.ascii as ii
 import astropy.table as at
 from astropy.utils.data import download_file
-from astrodbkit import votools
+from . import votools
 
 warnings.simplefilter('ignore')
 
@@ -563,9 +563,111 @@ class Database:
         else:
             print("\nInvalid command: {}\nTry again or type 'help' or 'abort'.\n".format(replace))
 
+    def _explicit_query(self, SQL, use_converters=True):
+        """
+        Sorts the column names so they are returned in the same order they are queried. Also turns
+        ambiguous SELECT statements into explicit SQLite language in case column names are not unique.
+
+        HERE BE DRAGONS!!! Bad bad bad. This method needs to be reworked.
+
+        Parameters
+        ----------
+        SQL: str
+            The SQLite query to parse
+        use_converters: bool
+            Apply converters to columns with custom data types
+
+        Returns
+        -------
+        (SQL, columns): (str, sequence)
+            The new SQLite string to use in the query and the ordered column names
+
+        """
+        try:
+            # If field names are given, sort so that they come out in the same order they are fetched
+            if 'select' in SQL.lower() and 'from' in SQL.lower():
+
+                # Make a dictionary of the table aliases
+                tdict = {}
+                from_clause = SQL.lower().split('from ')[-1].split(' where')[0]
+                tables = [j for k in [i.split(' on ') for i in from_clause.split(' join ')] for j in k if '=' not in j]
+
+                for t in tables:
+                    t = t.replace('as', '')
+                    try:
+                        name, alias = t.split()
+                        tdict[alias] = name
+                    except:
+                        tdict[t] = t
+
+                # Get all the column names and dtype placeholders
+                columns = \
+                SQL.replace(' ', '').lower().split('distinct' if 'distinct' in SQL.lower() else 'select')[1].split(
+                    'from')[0].split(',')
+
+                # Replace * with the field names
+                for n, col in enumerate(columns):
+                    if '.' in col:
+                        t, col = col.split('.')
+                    else:
+                        t = tables[0]
+
+                    if '*' in col:
+                        col = np.array(self.list("PRAGMA table_info({})".format(tdict.get(t))).fetchall()).T[1]
+                    else:
+                        col = [col]
+
+                    columns[n] = ["{}.{}".format(t, c) if len(tables) > 1 else c for c in col]
+
+                # Flatten the list of columns and dtypes
+                columns = [j for k in columns for j in k]
+
+                # Get the dtypes
+                dSQL = "SELECT " \
+                       + ','.join(["typeof({})".format(col) for col in columns]) \
+                       + ' FROM ' + SQL.replace('from', 'FROM').split('FROM')[-1]
+                if use_converters:
+                    dtypes = [None] * len(columns)
+                else:
+                    dtypes = self.list(dSQL).fetchone()
+
+                # Reconstruct SQL query
+                SQL = "SELECT {}".format('DISTINCT ' if 'distinct' in SQL.lower() else '') \
+                      + (','.join(["{0} AS '{0}'".format(col) for col in columns]) \
+                             if use_converters else ','.join(["{1}{0}{2} AS '{0}'".format(col,
+                                                                                          'CAST(' if dt != 'null' else '',
+                                                                                          ' AS {})'.format(
+                                                                                              dt) if dt != 'null' else '') \
+                                                              for dt, col in zip(dtypes, columns)])) \
+                      + ' FROM ' \
+                      + SQL.replace('from', 'FROM').split('FROM')[-1]
+
+            elif 'pragma' in SQL.lower():
+                columns = ['cid', 'name', 'type', 'notnull', 'dflt_value', 'pk']
+
+            return SQL, columns
+
+        except:
+            return SQL, ''
+
+    def info(self):
+        """
+        Prints out information for the loaded database, namely the available tables and the number of entries for each.
+        """
+        t = self.query("SELECT * FROM sqlite_master WHERE type='table'", fmt='table')
+        all_tables = t['name'].tolist()
+        print('Database Inventory')
+        print('==================')
+        for table in ['sources'] + [t for t in all_tables if
+                                    t not in ['sources', 'sqlite_sequence']]:
+            x = self.query('select count() from {}'.format(table), fmt='array', fetch='one')
+            if x is None: continue
+            print('{}: {}'.format(table.upper(), x[0]))
+
     def inventory(self, source_id, fetch=False, fmt='table'):
         """
-        Prints a summary of all objects in the database. Input string or list of strings in **ID** or **unum** for specific objects.
+        Prints a summary of all objects in the database. Input string or list of strings in **ID** or **unum**
+        for specific objects.
 
         Parameters
         ----------
@@ -890,7 +992,7 @@ class Database:
             if verbose:
                 print('Number of records modified: {}'.format(self.list("SELECT changes()").fetchone()[0] or '0'))
 
-    def output_spectrum(self, spectrum, filepath, header={}, original=False):
+    def output_spectrum(self, spectrum, filepath, header={}):
         """
         Prints a file of the given spectrum to an ascii file with specified filepath.
 
@@ -900,8 +1002,6 @@ class Database:
             The id from the SPECTRA table or a [w,f,e] sequence
         filepath: str
             The path of the file to print the data to.
-        original: bool
-            Return the file in the original uploaded form
         header: dict
                 A dictionary of metadata to add of update in the header
 
@@ -1127,7 +1227,7 @@ class Database:
         except IOError:
             print('Could not execute: ' + SQL)
 
-    def references(self, criteria, fetch=False, publications='publications', column_name='publication_shortname'):
+    def references(self, criteria, publications='publications', column_name='publication_shortname', fetch=False):
         """
         Do a reverse lookup on the **publications** table. Will return every entry that matches that reference.
 
@@ -1135,12 +1235,12 @@ class Database:
         ----------
         criteria: int or str
             The id from the PUBLICATIONS table whose data across all tables is to be printed.
-        fetch: bool
-            Return the results.
         publications: str
             Name of the publications table
         column_name: str
             Name of the reference column in other tables
+        fetch: bool
+            Return the results.
 
         Returns
         -------
@@ -1889,8 +1989,8 @@ sqlite3.register_adapter(np.ndarray, adapt_array)
 # sqlite3.register_adapter(str, adapt_spectrum)
 
 # Register the converters
-sqlite3.register_converter(str('ARRAY'), convert_array)
-sqlite3.register_converter(str('SPECTRUM'), convert_spectrum)
+sqlite3.register_converter("ARRAY", convert_array)
+sqlite3.register_converter("SPECTRUM", convert_spectrum)
 
 
 def pprint(data, names='', title='', formats={}):
