@@ -54,7 +54,7 @@ def create_database(dbpath):
 
 
 class Database:
-    def __init__(self, dbpath):
+    def __init__(self, dbpath, directory='tabledata'):
         """
         Initialize the database.
 
@@ -62,6 +62,8 @@ class Database:
         ----------
         dbpath: str
             The path to the .db or .sql database file.
+        directory: str
+            Folder in which individual tables are stored (Default: tabledata)
 
         Returns
         -------
@@ -95,7 +97,7 @@ class Database:
                 print('Populating database...')
                 tables = os.popen('sqlite3 {} ".tables"'.format(self.dbpath)).read().replace('\n',' ').split()
                 for table in tables:
-                    os.system('sqlite3 {0} ".read tabledata/{1}.sql"'.format(self.dbpath, table))
+                    os.system('sqlite3 {0} ".read {1}/{2}.sql"'.format(self.dbpath, directory, table))
             elif dbpath.endswith('.db'):
                 self.sqlpath = dbpath.replace('.db', '.sql')
                 self.dbpath = dbpath
@@ -450,21 +452,27 @@ class Database:
             print('\nFinished clean up on {} table.'.format(table.upper()))
 
     # @property
-    def close(self):
+    def close(self, silent=False):
         """
         Close the database and ask to save and delete the file
-        """
-        saveme = get_input("Save database contents to 'tabledata/'? ([y], n) \n"
-                           "To save under a folder name, run db.save() before closing. ")
-        if not saveme.lower() == 'n':
-            self.save()
 
-        delete = get_input("Do you want to delete {0}? (y,[n]) \n"
-                           "Don't worry, a new one will be generated if you run astrodb.Database({1}) "
-                           .format(self.dbpath, self.sqlpath))
-        if delete.lower() == 'y':
-            print("Deleting {}".format(self.dbpath))
-            os.system("rm {}".format(self.dbpath))
+        Parameters
+        ----------
+        silent: bool
+            Close quietly without saving or deleting (Default: False).
+        """
+        if not silent:
+            saveme = get_input("Save database contents to 'tabledata/'? ([y], n) \n"
+                               "To save under a folder name, run db.save() before closing. ")
+            if not saveme.lower() == 'n':
+                self.save()
+
+            delete = get_input("Do you want to delete {0}? (y,[n]) \n"
+                               "Don't worry, a new one will be generated if you run astrodb.Database({1}) "
+                               .format(self.dbpath, self.sqlpath))
+            if delete.lower() == 'y':
+                print("Deleting {}".format(self.dbpath))
+                os.system("rm {}".format(self.dbpath))
 
         print('Closing connection')
         self.conn.close()
