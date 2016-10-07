@@ -1873,8 +1873,8 @@ sqlite3.register_adapter(np.ndarray, adapt_array)
 # sqlite3.register_adapter(str, adapt_spectrum)
 
 # Register the converters
-sqlite3.register_converter("ARRAY", convert_array)
-sqlite3.register_converter("SPECTRUM", convert_spectrum)
+sqlite3.register_converter(str("ARRAY"), convert_array)
+sqlite3.register_converter(str("SPECTRUM"), convert_spectrum)
 
 
 def pprint(data, names='', title='', formats={}):
