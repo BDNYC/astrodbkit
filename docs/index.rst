@@ -3,6 +3,8 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+.. ..image:: BDNYC-logo.jpg
+
 Welcome to astrodbkit's documentation!
 ======================================
 
@@ -11,7 +13,7 @@ This documentation describes a toolkit of classes, methods, and functions useful
 Getting Started
 ===============
 
-To install astrodbkit, do::
+To install **astrodbkit**, do::
 
     pip install astrodbkit
 
@@ -38,7 +40,7 @@ Alternatively, you can `download and use the BDNYC Database`_, which contains th
 Accessing the Database
 ======================
 
-To start using the database, launch iPython, import the module, then initialize the database with the :class:`astrodb.Database()` class like so::
+To start using the database, launch Python, import the module, then initialize the database with the :class:`astrodb.Database()` class like so::
 
     from astrodbkit import astrodb
     db = astrodb.Database(dbpath)
@@ -51,20 +53,26 @@ Querying the Database
 Specialized Searches
 --------------------
 
-Now that you have the database at your fingertips, you’ll want to get some information out of it.
+Now that you have the database loaded, you’ll want to get some information out of it.
 There are a variety of ways to extract information with astrodbkit.
+
+The schema for any table can be quickly examined with the :py:meth:`~astrodb.Database.schema` method::
+
+   db.schema('sources')
 
 You can see an inventory of all data for a specific source by passing an integer id to the :py:meth:`~astrodb.Database.inventory` method::
 
     data = db.inventory(86)
 
-This will retrieve the data across all tables with the specified source_id for visual inspection. Setting *fetch=True* will return the data as a dictionary of Astropy tables so that table and column keys can be used to access the results. For example::
+This will retrieve the data across all tables with the specified source_id for visual inspection.
+Setting *fetch=True* will return the data as a dictionary of Astropy tables so that table and column keys can be used to access the results. For example::
 
     data['photometry'][['band','magnitude','magnitude_unc']]
 
 will return a table of the band, magnitude and uncertainty for all records in the sources table with that source_id.
 
-You can search any table in the database with the :py:meth:`~astrodb.Database.identify` method by supplying a string, integer, or (ra,dec) coordinates along with the table to search. For example, if I want to find all the records in the SOURCES table in the HR 8799 system::
+You can search any table in the database with the :py:meth:`~astrodb.Database.identify` method by supplying a string,
+integer, or (ra,dec) coordinates along with the table to search. For example, if I want to find all the records in the SOURCES table in the HR 8799 system::
 
     db.search('8799', 'sources')
     
@@ -98,12 +106,57 @@ By default, this returns the data as a list of arrays. By setting *fmt='dict'* o
 
 .. _Here is a detailed post about how to write a SQL query: http://www.bdnyc.org/?p=898
 
-For more general SQL commands beyond SELECT and PRAGMA, you can use the :py:meth:`~astrodb.Database.modify` method.
+For more general SQL commands beyond SELECT and PRAGMA, you can use the :py:meth:`~astrodb.Database.modify` method::
+
+   db.modify("UPDATE spectra SET wavelength_units='A' WHERE id=4")
 
 Adding Data
 ===========
 
+There are two main ways to add data to a database with **astrodbkit**: by passing a properly formatted ascii file or by passing the data directly in a list of lists.
 
+To add data from a file, you want to create a file with the following format::
+
+   ra|dec|publication_id
+   123|-34|5
+
+Each entry should be its own row, with the first row denoting the columns to be populated.
+Note that the column names in the ascii file need not be in the same order as the table.
+Also, only the column names that match will be added and non-matching or missing column names will be ignored.
+Assuming this file is called **data.txt** in the working directory, we can add this new data to the SOURCES table with::
+
+   db.add_data('data.txt', 'sources', delim='|')
+
+To add the same data without creating the file, you would do the following::
+
+   data = [['ra', 'dec', 'publication_id'],[123, -34, 5]]
+   db.add_data(data, 'sources')
+
+Saving Results
+==============
+
+The :py:meth:`~astrodb.Database.query` method provides an option to export your query to a file::
+
+   db.query(my_query, export='results.txt')
+
+By default, this will save the results to an ascii file.
+
+VOTables are another way to store data in a format that can be read by other programs, such as `TOPCAT`_.
+The :py:mod:`votools` module can generate a VOTable from your SQL query. This has been integrated to be called directly
+by the :py:meth:`~astrodb.Database.query` method when the filename ends in **.xml** or **.vot**. For example::
+
+   from astrodbkit import astrodb
+   db = astrodb.Database('/path/to/database')
+   txt = 'SELECT s.id, s.ra, s.dec, s.shortname, p.source_id, p.band, p.magnitude FROM sources as s ' \
+         'JOIN photometry as p ON s.id=p.source_id WHERE s.dec<=-10 AND (p.band IN ("J","H","Ks","W1"))'
+   data = db.query(txt, export='votable.xml')
+
+.. _TOPCAT: http://www.star.bris.ac.uk/~mbt/topcat/
+
+You can import and call votools directly, which has additional options you can set.
+
+.. note:: Special characters (such as accents or greek letters) can cause astropy and thus file output to fail in Python 2.
+   Python 3 handles this differently and will not fail in this instance.
 
 Contents
 ========

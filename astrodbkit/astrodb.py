@@ -135,26 +135,26 @@ class Database:
 
     def add_data(self, data, table, delimiter='|', bands='', verbose=False):
         """
-        Adds data to the specified database table. Column names must match table fields to insert,
-        however order and completeness don't matter.
+    Adds data to the specified database table. Column names must match table fields to insert,
+    however order and completeness don't matter.
 
-        Parameters
-        ----------
-        data: str, sequence
-          The path to an ascii file or a list of lists. The first row or element must
-          be the list of column names
-        table: str
-          The name of the table into which the data should be inserted
-        delimiter: str
-          The string to use as the delimiter when parsing the ascii file
-        bands: sequence
-          Sequence of band to look for in the data header when digesting columns of
-          multiple photometric measurements (e.g. ['MKO_J','MKO_H','MKO_K']) into individual
-          rows of data for database insertion
-        verbose: bool
-          Print diagnostic messages
+    Parameters
+    ----------
+    data: str, sequence
+      The path to an ascii file or a list of lists. The first row or element must
+      be the list of column names
+    table: str
+      The name of the table into which the data should be inserted
+    delimiter: str
+      The string to use as the delimiter when parsing the ascii file
+    bands: sequence
+      Sequence of band to look for in the data header when digesting columns of
+      multiple photometric measurements (e.g. ['MKO_J','MKO_H','MKO_K']) into individual
+      rows of data for database insertion
+    verbose: bool
+      Print diagnostic messages
 
-        """
+    """
         # Store raw entry
         entry, del_records = data, []
 
@@ -268,6 +268,82 @@ class Database:
         else:
             print('Please check your input: {}'.format(entry))
 
+    def add_foreign_key(self, table, parent, key_child, key_parent, verbose=True):
+        """
+        Add foreign key (**key_parent** from **parent**) to **table** column **key_child**
+
+        Parameters
+        ----------
+        table: string
+            The name of the table to modify. This is the child table.
+        parent: string or list of strings
+            The name of the reference table. This is the parent table.
+        key_child: string or list of strings
+            Column in **table** to set as foreign key. This is the child key.
+        key_parent: string or list of strings
+            Column in **parent** that the foreign key refers to. This is the parent key.
+        verbose: bool, optional
+            Verbose output
+        """
+
+        # Temporarily turn off foreign keys
+        self.list('PRAGMA foreign_keys=OFF')
+
+        metadata = self.query("PRAGMA table_info({})".format(table), fmt='table')
+        columns, types, required, pk = [np.array(metadata[n]) for n in ['name', 'type', 'notnull', 'pk']]
+
+        # Set constraints
+        constraints = []
+        for elem in required:
+            if elem > 0:
+                constraints.append('NOT NULL')
+            else:
+                constraints.append('')
+
+        # Set PRIMARY KEY columns
+        ind, = np.where(pk >= 1)
+        for i in ind:
+            constraints[i] += ' UNIQUE'  # Add UNIQUE constraint to primary keys
+        pk_names = columns[ind]
+
+        try:
+            # Rename the old table and create a new one
+            self.list("DROP TABLE IF EXISTS TempOldTable_foreign")
+            self.list("ALTER TABLE {0} RENAME TO TempOldTable_foreign".format(table))
+
+            # Re-create the table specifying the FOREIGN KEY
+            sqltxt = "CREATE TABLE {0} ({1}".format(table, ', '.join(['{} {} {}'.format(c, t, r)
+                                                                      for c, t, r in zip(columns, types, constraints)]))
+            sqltxt += ', PRIMARY KEY({})'.format(', '.join([elem for elem in pk_names]))
+            if isinstance(key_child, type(list())):
+                for kc, p, kp in zip(key_child, parent, key_parent):
+                    sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(kc, p, kp)
+            else:
+                sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(key_child, parent, key_parent)
+            sqltxt += ' )'
+
+            self.list(sqltxt)
+
+            # Populate the new table and drop the old one
+            tempdata = self.query("PRAGMA table_info(TempOldTable_foreign)", fmt='table')
+            old_columns = [c for c in tempdata['name'] if c in columns]
+            self.list("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable_foreign".format(table, ','.join(old_columns)))
+            self.list("DROP TABLE TempOldTable_foreign")
+
+            if verbose:
+                # print('Successfully added foreign key.')
+                t = self.query('SELECT name, sql FROM sqlite_master', fmt='table')
+                print(t[t['name'] == table]['sql'][0].replace(',', ',\n'))
+
+        except:
+            print('Error attempting to add foreign key.')
+            self.list("DROP TABLE IF EXISTS {0}".format(table))
+            self.list("ALTER TABLE TempOldTable_foreign RENAME TO {0}".format(table))
+            raise sqlite3.IntegrityError('Failed to add foreign key')
+
+        # Reactivate foreign keys
+        self.list('PRAGMA foreign_keys=ON')
+
     def clean_up(self, table, verbose=False):
         """
         Removes exact duplicates, blank records or data without a *source_id* from the specified **table**.
@@ -277,6 +353,8 @@ class Database:
         ----------
         table: str
             The name of the table to remove duplicates, blanks, and data without source attributions.
+        verbose: bool
+            Print out some diagnostic messages
 
         """
         # Get the table info and all the records
@@ -338,7 +416,8 @@ class Database:
             if SQL[-5:] == ' AND ':
                 SQL = SQL[:-5]
 
-            if verbose: print('\nSearching for duplicates with: {}\n'.format(SQL))
+            if verbose:
+                print('\nSearching for duplicates with: {}\n'.format(SQL))
 
             duplicate = self.query(SQL, fetch='one')
 
@@ -858,7 +937,7 @@ class Database:
         SQL: str
             The SQL query to execute
         params: sequence
-            Mimicks the native parameter substitution of sqlite3
+            Mimics the native parameter substitution of sqlite3
         verbose: bool
                 Prints the number of modified records
         """
@@ -1015,25 +1094,28 @@ class Database:
         else:
             print("No spectrum {} in the SPECTRA table.".format(spectrum_id))
 
-    def query(self, SQL, params='', fmt='array', fetch='all', unpack=False, export='',
+    def query(self, SQL, params='', fmt='array', fetch='all', unpack=False, export='', \
               verbose=False, use_converters=True):
         """
-        Wrapper for cursors so data can be retrieved as a list or dictionary from same method
+        Wrapper for cursors so data can be retrieved as a list or dictionary from same method.
 
         Parameters
         ----------
         SQL: str
             The SQL query to execute
         params: sequence
-            Mimicks the native parameter substitution of sqlite3
+            Mimics the native parameter substitution of sqlite3
         fmt: str
-            Returns the data as a dictionary, array, or astropy.table given 'dict', 'array', or 'table'
+            Returns the data as a dictionary, array, astropy.table, or pandas.Dataframe
+            given 'dict', 'array', 'table', or 'pandas'
+        fetch: str
+            String indicating whether to return **all** results or just **one**
         unpack: bool
             Returns the transpose of the data
         export: str
             The file path of the ascii file to which the data should be exported
         verbose: bool
-            print(the data also
+            print the data as well
         use_converters: bool
             Apply converters to columns with custom data types
 
@@ -1086,9 +1168,17 @@ class Database:
 
                     # Or return the results
                     else:
-                        if fetch == 'one': dictionary, array = dictionary[0], array if unpack else np.array(
-                            list(array[0]))
-                        return table if fmt == 'table' else dictionary if fmt == 'dict' else array
+                        if fetch == 'one':
+                            dictionary, array = dictionary[0], array if unpack else np.array(list(array[0]))
+
+                        if fmt == 'table':
+                            return table
+                        elif fmt == 'dict':
+                            return dictionary
+                        elif fmt == 'pandas':
+                            return table.to_pandas()
+                        else:
+                            return array
 
                 else:
                     return
@@ -1293,6 +1383,53 @@ class Database:
             else:
                 print("No results found for {} in the {} table.".format(criterion, table.upper()))
 
+    def snapshot(self, name_db='export.db', version=1.0):
+        """
+        Function to generate a snapshot of the database by version number.
+
+        Parameters
+        ----------
+        name_db: string
+            Name of the new database (Default: export.db)
+        version: float
+            Version number to export (Default: 1.0)
+        """
+
+        # Check if file exists
+        if os.path.isfile(name_db):
+            import datetime
+            date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")
+            print("Renaming existing file {} to {}".format(name_db, name_db.replace('.db', date + '.db')))
+            os.system("mv {} {}".format(name_db, name_db.replace('.db', date + '.db')))
+
+        # Create a new database from existing database schema
+        t, = self.query("select sql from sqlite_master where type = 'table'", unpack=True)
+        schema = ';\n'.join(t) + ';'
+        os.system("sqlite3 {} '{}'".format(name_db, schema))
+
+        # Attach database to newly created database
+        db = Database(name_db)
+        db.list('PRAGMA foreign_keys=OFF')  # Temporarily deactivate foreign keys for the snapshot
+        db.list("ATTACH DATABASE '{}' AS orig".format(self.dbpath))
+
+        # For each table in database, insert records if they match version number
+        t = db.query("SELECT * FROM sqlite_master WHERE type='table'", fmt='table')
+        all_tables = t['name'].tolist()
+        for table in [t for t in all_tables if t not in ['sqlite_sequence', 'changelog']]:
+            # Check if this is table with version column
+            metadata = db.query("PRAGMA table_info({})".format(table), fmt='table')
+            columns, types, required, pk = [np.array(metadata[n]) for n in ['name', 'type', 'notnull', 'pk']]
+            print(table, columns)
+            if 'version' not in columns:
+                db.modify("INSERT INTO {0} SELECT * FROM orig.{0}".format(table))
+            else:
+                db.modify("INSERT INTO {0} SELECT * FROM orig.{0} WHERE orig.{0}.version<={1}".format(table, version))
+
+        # Detach original database
+        db.list('DETACH DATABASE orig')
+        db.list('PRAGMA foreign_keys=ON')
+        db.close()
+
     def table(self, table, columns, types, constraints='', pk='', new_table=False):
         """
         Rearrange, add or delete columns from database **table** with desired ordered list of **columns** and corresponding data **types**.
@@ -1310,7 +1447,7 @@ class Database:
         pk: string or list
             Name(s) of the primary key(s) if other than ID
         new_table: bool
-                Create a new table
+            Create a new table
 
         """
         goodtogo = True
@@ -1400,169 +1537,6 @@ class Database:
              types, and constraints are formatted properly.'.format(table.upper(), \
                                                                     'created' if new_table else 'modified'))
 
-    def add_foreign_key(self, table, parent, key_child, key_parent, verbose=True):
-        """
-        Add foreign key (**key_parent** from **parent**) to **table** column **key_child**
-
-        Parameters
-        ----------
-        table: string
-            The name of the table to modify. This is the child table.
-        parent: string or list of strings
-            The name of the reference table. This is the parent table.
-        key_child: string or list of strings
-            Column in **table** to set as foreign key. This is the child key.
-        key_parent: string or list of strings
-            Column in **parent** that the foreign key refers to. This is the parent key.
-        verbose: bool, optional
-            Verbose output
-        """
-
-        # Temporarily turn off foreign keys
-        self.list('PRAGMA foreign_keys=OFF')
-
-        metadata = self.query("PRAGMA table_info({})".format(table), fmt='table')
-        columns, types, required, pk = [np.array(metadata[n]) for n in ['name', 'type', 'notnull', 'pk']]
-
-        # Set constraints
-        constraints = []
-        for elem in required:
-            if elem > 0:
-                constraints.append('NOT NULL')
-            else:
-                constraints.append('')
-
-        # Set PRIMARY KEY columns
-        ind, = np.where(pk >= 1)
-        for i in ind:
-            constraints[i] += ' UNIQUE'  # Add UNIQUE constraint to primary keys
-        pk_names = columns[ind]
-
-        try:
-            # Rename the old table and create a new one
-            self.list("DROP TABLE IF EXISTS TempOldTable_foreign")
-            self.list("ALTER TABLE {0} RENAME TO TempOldTable_foreign".format(table))
-
-            # Re-create the table specifying the FOREIGN KEY
-            sqltxt = "CREATE TABLE {0} ({1}".format(table, ', '.join(['{} {} {}'.format(c, t, r)
-                                                                      for c, t, r in zip(columns, types, constraints)]))
-            sqltxt += ', PRIMARY KEY({})'.format(', '.join([elem for elem in pk_names]))
-            if isinstance(key_child, type(list())):
-                for kc, p, kp in zip(key_child, parent, key_parent):
-                    sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(kc, p, kp)
-            else:
-                sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(key_child, parent, key_parent)
-            sqltxt += ' )'
-
-            self.list(sqltxt)
-
-            # Populate the new table and drop the old one
-            tempdata = self.query("PRAGMA table_info(TempOldTable_foreign)", fmt='table')
-            old_columns = [c for c in tempdata['name'] if c in columns]
-            self.list("INSERT INTO {0} ({1}) SELECT {1} FROM TempOldTable_foreign".format(table, ','.join(old_columns)))
-            self.list("DROP TABLE TempOldTable_foreign")
-
-            if verbose:
-                print('Successfully added foreign key.')
-                t = self.query('SELECT name, sql FROM sqlite_master', fmt='table')
-                print(t[t['name'] == table]['sql'][0].replace(',', ',\n'))
-
-        except:
-            print('Error attempting to add foreign key.')
-            self.list("DROP TABLE IF EXISTS {0}".format(table))
-            self.list("ALTER TABLE TempOldTable_foreign RENAME TO {0}".format(table))
-            raise sqlite3.IntegrityError('Failed to add foreign key')
-
-        # Reactivate foreign keys
-        self.list('PRAGMA foreign_keys=ON')
-
-    def _explicit_query(self, SQL, use_converters=True):
-        """
-        Sorts the column names so they are returned in the same order they are queried. Also turns
-        ambiguous SELECT statements into explicit SQLite language in case column names are not unique.
-
-        HERE BE DRAGONS!!! Bad bad bad. This method needs to be reworked.
-
-        Parameters
-        ----------
-        SQL: str
-            The SQLite query to parse
-        use_converters: bool
-            Apply converters to columns with custom data types
-
-        Returns
-        -------
-        (SQL, columns): (str, sequenc   e)
-            The new SQLite string to use in the query and the ordered column names
-
-        """
-        try:
-            # If field names are given, sort so that they come out in the same order they are fetched
-            if 'select' in SQL.lower() and 'from' in SQL.lower():
-
-                # Make a dictionary of the table aliases
-                tdict = {}
-                from_clause = SQL.lower().split('from ')[-1].split(' where')[0]
-                tables = [j for k in [i.split(' on ') for i in from_clause.split(' join ')] for j in k if '=' not in j]
-
-                for t in tables:
-                    t = t.replace('as', '')
-                    try:
-                        name, alias = t.split()
-                        tdict[alias] = name
-                    except:
-                        tdict[t] = t
-
-                # Get all the column names and dtype placeholders
-                columns = \
-                SQL.replace(' ', '').lower().split('distinct' if 'distinct' in SQL.lower() else 'select')[1].split(
-                    'from')[0].split(',')
-
-                # Replace * with the field names
-                for n, col in enumerate(columns):
-                    if '.' in col:
-                        t, col = col.split('.')
-                    else:
-                        t = tables[0]
-
-                    if '*' in col:
-                        col = np.array(self.list("PRAGMA table_info({})".format(tdict.get(t))).fetchall()).T[1]
-                    else:
-                        col = [col]
-
-                    columns[n] = ["{}.{}".format(t, c) if len(tables) > 1 else c for c in col]
-
-                # Flatten the list of columns and dtypes
-                columns = [j for k in columns for j in k]
-
-                # Get the dtypes
-                dSQL = "SELECT " \
-                       + ','.join(["typeof({})".format(col) for col in columns]) \
-                       + ' FROM ' + SQL.replace('from', 'FROM').split('FROM')[-1]
-                if use_converters:
-                    dtypes = [None] * len(columns)
-                else:
-                    dtypes = self.list(dSQL).fetchone()
-
-                # Reconstruct SQL query
-                SQL = "SELECT {}".format('DISTINCT ' if 'distinct' in SQL.lower() else '') \
-                      + (','.join(["{0} AS '{0}'".format(col) for col in columns]) \
-                             if use_converters else ','.join(["{1}{0}{2} AS '{0}'".format(col,
-                                                                                          'CAST(' if dt != 'null' else '',
-                                                                                          ' AS {})'.format(
-                                                                                              dt) if dt != 'null' else '') \
-                                                              for dt, col in zip(dtypes, columns)])) \
-                      + ' FROM ' \
-                      + SQL.replace('from', 'FROM').split('FROM')[-1]
-
-            elif 'pragma' in SQL.lower():
-                columns = ['cid', 'name', 'type', 'notnull', 'dflt_value', 'pk']
-
-            return SQL, columns
-
-        except:
-            return SQL, ''
-
 
 class Spectrum:
     def __init__(self, data, header='', path=''):
@@ -1631,7 +1605,7 @@ def adapt_array(arr):
     """
     out = io.BytesIO()
     np.save(out, arr), out.seek(0)
-    return buffer(out.read())
+    return buffer(out.read())  # TODO: Fix for Python 3
 
 
 def convert_array(array):
@@ -1914,7 +1888,7 @@ sqlite3.register_converter(str('SPECTRUM'), convert_spectrum)
 
 def pprint(data, names='', title='', formats={}):
     """
-    Prints tables with a little bit 'o formatting
+    Prints tables with a bit of formatting
 
     Parameters
     ----------
@@ -1967,9 +1941,10 @@ def pprint(data, names='', title='', formats={}):
             print(' '.join([str(i[key]).decode('utf-8')[:max_length].rjust(str_lengths[key])
                            if i[key] else '-'.rjust(str_lengths[key]) for key in pdata.keys()]))
 
+
 def clean_header(header):
     try:
-        header = pf.open(File, ignore_missing_end=True)[0].header
+        header = pf.open(File, ignore_missing_end=True)[0].header  # TODO: Fix missing File reference
         new_header = pf.Header()
         for x, y, z in header.cards: new_header[x.replace('.', '_').replace('#', '')] = (y, z)
         header = pf.PrimaryHDU(header=new_header).header
@@ -1998,8 +1973,9 @@ def _help():
 
 def scrub(data, units=False):
     """
-    For input data [w,f,e] or [w,f] returns the list with NaN, negative, and zero flux (and corresponsing wavelengths and errors) removed.
-        """
+    For input data [w,f,e] or [w,f] returns the list with NaN, negative, and zero flux
+    (and corresponding wavelengths and errors) removed.
+    """
     units = [i.unit if hasattr(i, 'unit') else 1 for i in data]
     data = [np.asarray(i.value if hasattr(i, 'unit') else i, dtype=np.float32) for i in data if
             isinstance(i, np.ndarray)]
@@ -2124,5 +2100,5 @@ def _autofill_spec_record(record):
     return record
 
 
-type_dict = {'INTEGER': np.dtype('int64'), 'REAL': np.dtype('float64'), 'TEXT': np.dtype('S64'),
-             'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('S164'), 'BOOLEAN': np.dtype('bool')}
+type_dict = {'INTEGER': np.dtype('int64'), 'REAL': np.dtype('float64'), 'TEXT': np.dtype('object'),
+             'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('object'), 'BOOLEAN': np.dtype('bool')}
