@@ -449,8 +449,13 @@ class Database:
     # @property
     def close(self):
         """
-        Close the database and ask to delete the file
+        Close the database and ask to save and delete the file
         """
+        saveme = get_input("Save database contents to 'tabledata/'? ([y], n) \n"
+                           "To save under a folder name, run db.save() before closing.")
+        if not saveme.lower() == 'n':
+            self.save()
+
         delete = get_input("Do you want to delete {}? Don't worry, a new one will be generated when you run astrodb.Database() again. (y,[n]) : ".format(self.dbpath))
         if delete.lower() == 'y':
             print("Deleting {}".format(self.dbpath))
@@ -1188,16 +1193,12 @@ class Database:
 
         if fetch: return data_tables
 
-    def save(self, branch='auto_db', git=False, directory='tabledata'):
+    def save(self, directory='tabledata'):
         """
-        Dump the entire contents of the database into a .sql file and push to Github
+        Dump the entire contents of the database into a folder **directory** as ascii files
         
         Parameters
         ==========
-        branch: str
-            The name of the git branch to push to. Branch must exist or this will fail.
-        git: bool
-            Whether or not to push to GitHub
         directory: str
             Directory name to store individual table data
         """
@@ -1235,22 +1236,30 @@ class Database:
                     if line.startswith('INSERT INTO "{}"'.format(table)):
                         f.write('%s\n' % line.encode('ascii', 'ignore'))
 
-        # TODO: Remove git integration, just output some commands for the user to take if they want to
+        print("Tables saved to directory {}".format(directory))
+        print("""You can now run git to commit and push these changes, if needed.
+        For example, if on the master branch you can do the following:
+          git add {0}
+          git commit -m "COMMIT MESSAGE HERE"
+          git push origin master
+        You can then issue a pull request on GitHub to have these changes reviewed and accepted"""
+              .format(' '.join(tablepaths)))
+
         # Collect name and commit message from the user and push to Github
-        if git:
-            user = get_input('Please enter your name : ')
-            commit = get_input('Briefly describe the changes you have made : ')
-            if user and commit:
-                try:  # If not on the same branch, changes are overwritten or aborted: BAD
-                    call('git checkout {}'.format(branch), shell=True)
-                    call('git pull origin {}'.format(branch), shell=True)
-                    call('git add {}'.format(' '.join(tablepaths)), shell=True)
-                    call('git commit -m "(via astrodbkit) {}"'.format(commit), shell=True)
-                    call('git push origin {}'.format(branch), shell=True)
-                except:
-                    print('Changes written to file but not pushed to Github. Make sure you are working from a git repo.')
-            else:
-                print('Sorry, astrodbkit needs a username and commit message to push changes to Guthub.')
+        # if git:
+        #     user = get_input('Please enter your name : ')
+        #     commit = get_input('Briefly describe the changes you have made : ')
+        #     if user and commit:
+        #         try:  # If not on the same branch, changes are overwritten or aborted: BAD
+        #             call('git checkout {}'.format(branch), shell=True)
+        #             call('git pull origin {}'.format(branch), shell=True)
+        #             call('git add {}'.format(' '.join(tablepaths)), shell=True)
+        #             call('git commit -m "(via astrodbkit) {}"'.format(commit), shell=True)
+        #             call('git push origin {}'.format(branch), shell=True)
+        #         except:
+        #             print('Changes written to file but not pushed to Github. Make sure you are working from a git repo.')
+        #     else:
+        #         print('Sorry, astrodbkit needs a username and commit message to push changes to Guthub.')
 
     def schema(self, table):
         """

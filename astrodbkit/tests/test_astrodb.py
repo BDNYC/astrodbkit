@@ -156,13 +156,13 @@ def test_references():
 
 
 def test_save():
-    empty_db.save(git=False, directory='tempempty')
-    bdnyc_db.save(git=False, directory='tempdata')
+    empty_db.save(directory='tempempty')
+    bdnyc_db.save(directory='tempdata')
 
 
 def test_close(monkeypatch):
     # Fake user input
-    inputs = ['n']
+    inputs = ['n', 'n']
     input_generator = (i for i in inputs)
     monkeypatch.setattr('astrodbkit.astrodb.get_input', lambda prompt: next(input_generator))
 
