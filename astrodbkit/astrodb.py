@@ -455,11 +455,13 @@ class Database:
         Close the database and ask to save and delete the file
         """
         saveme = get_input("Save database contents to 'tabledata/'? ([y], n) \n"
-                           "To save under a folder name, run db.save() before closing.")
+                           "To save under a folder name, run db.save() before closing. ")
         if not saveme.lower() == 'n':
             self.save()
 
-        delete = get_input("Do you want to delete {}? Don't worry, a new one will be generated when you run astrodb.Database() again. (y,[n]) : ".format(self.dbpath))
+        delete = get_input("Do you want to delete {0}? (y,[n]) \n"
+                           "Don't worry, a new one will be generated if you run astrodb.Database({1}) "
+                           .format(self.dbpath, self.sqlpath))
         if delete.lower() == 'y':
             print("Deleting {}".format(self.dbpath))
             os.system("rm {}".format(self.dbpath))
@@ -1339,14 +1341,16 @@ class Database:
                     if line.startswith('INSERT INTO "{}"'.format(table)):
                         f.write('%s\n' % line.encode('ascii', 'ignore'))
 
-        print("Tables saved to directory {}".format(directory))
-        print("""You can now run git to commit and push these changes, if needed.
-        For example, if on the master branch you can do the following:
-          git add {0}
-          git commit -m "COMMIT MESSAGE HERE"
-          git push origin master
-        You can then issue a pull request on GitHub to have these changes reviewed and accepted"""
-              .format(' '.join(tablepaths)))
+        print("Tables saved to directory {}/".format(directory))
+        print("""=======================================================================================
+You can now run git to commit and push these changes, if needed.
+For example, if on the master branch you can do the following:
+  git add {0} {1}/*.sql
+  git commit -m "COMMIT MESSAGE HERE"
+  git push origin master
+You can then issue a pull request on GitHub to have these changes reviewed and accepted
+======================================================================================="""
+              .format(self.sqlpath, directory))
 
         # Collect name and commit message from the user and push to Github
         # if git:
