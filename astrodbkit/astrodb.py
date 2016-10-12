@@ -54,14 +54,16 @@ def create_database(dbpath):
 
 
 class Database:
-    def __init__(self, dbpath):
+    def __init__(self, dbpath, directory='tabledata'):
         """
         Initialize the database.
 
         Parameters
         ----------
         dbpath: str
-            The path to the database file.
+            The path to the .db or .sql database file.
+        directory: str
+            Folder in which individual tables are stored (Default: tabledata)
 
         Returns
         -------
@@ -71,14 +73,47 @@ class Database:
         """
         if os.path.isfile(dbpath):
 
+            # Alternatively, just list the directory with the schema and .sql files and require that dbpath
+            # is the schema file, then load the tables individually
+
+            # If it is a .sql file, create an empty database in the
+            # working directory and generate the database from file
+            if dbpath.endswith('.sql'):
+                self.sqlpath = dbpath
+                self.dbpath = dbpath.replace('.sql', '.db')
+
+                # If the .db file already exists, rename it with the date
+                if os.path.isfile(self.dbpath):
+                    import datetime
+                    date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")
+                    print("Renaming existing file {} to {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
+                    os.system("mv {} {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
+
+                # Make the new database from the .sql files
+                # First the schema...
+                os.system("sqlite3 {} < {}".format(self.dbpath, self.sqlpath))
+
+                # Then load the table data...
+                print('Populating database...')
+                tables = os.popen('sqlite3 {} ".tables"'.format(self.dbpath)).read().replace('\n',' ').split()
+                for table in tables:
+                    os.system('sqlite3 {0} ".read {1}/{2}.sql"'.format(self.dbpath, directory, table))
+            elif dbpath.endswith('.db'):
+                self.sqlpath = dbpath.replace('.db', '.sql')
+                self.dbpath = dbpath
+            else:
+                self.sqlpath = dbpath + '.sql'
+                self.dbpath = dbpath
+
+            # Create .sql schema file if it doesn't exist
+            os.system('touch {}'.format(self.sqlpath.replace(' ', '\ ')))
+
             # Create connection
-            con = sqlite3.connect(dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
+            con = sqlite3.connect(self.dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
             con.text_factory = sqlite3.OptimizedUnicode
             self.conn = con
-            self.close = self.conn.close
+            self.curs = con.cursor()
             self.list = con.cursor().execute
-
-            self.dbpath = dbpath
 
             # Make dictionary
             def dict_factory(cursor, row):
@@ -415,6 +450,32 @@ class Database:
             return 'abort'
         else:
             print('\nFinished clean up on {} table.'.format(table.upper()))
+
+    # @property
+    def close(self, silent=False, directory='tabledata'):
+        """
+        Close the database and ask to save and delete the file
+
+        Parameters
+        ----------
+        silent: bool
+            Close quietly without saving or deleting (Default: False).
+        """
+        if not silent:
+            saveme = get_input("Save database contents to '{}/'? (y, [n]) \n"
+                               "To save under a folder name, run db.save() before closing. ".format(directory))
+            if saveme.lower() == 'y':
+                self.save()
+
+            delete = get_input("Do you want to delete {0}? (y,[n]) \n"
+                               "Don't worry, a new one will be generated if you run astrodb.Database('{1}') "
+                               .format(self.dbpath, self.sqlpath))
+            if delete.lower() == 'y':
+                print("Deleting {}".format(self.dbpath))
+                os.system("rm {}".format(self.dbpath))
+
+        print('Closing connection')
+        self.conn.close()
 
     def _compare_records(self, table, duplicate, options=['r', 'c', 'k', 'sql']):
         """
@@ -1244,6 +1305,76 @@ class Database:
                     pprint(data, title=table.upper())
 
         if fetch: return data_tables
+
+    def save(self, directory='tabledata'):
+        """
+        Dump the entire contents of the database into a folder **directory** as ascii files
+
+        Parameters
+        ==========
+        directory: str
+            Directory name to store individual table data
+        """
+        from subprocess import call
+
+        # Create the .sql file is it doesn't exist, i.e. if the Database class called a .db file initially
+        if not os.path.isfile(self.sqlpath):
+            self.sqlpath = self.dbpath.replace('.db', '.sql')
+            os.system('touch {}'.format(self.sqlpath))
+
+        # # Write the data to the .sql file
+        # with open(self.sqlpath, 'w') as f:
+        #     for line in self.conn.iterdump():
+        #         f.write('%s\n' % line)
+
+        # Alternatively...
+        # Write the schema
+        os.system("echo '.output {}\n.schema' | sqlite3 {}".format(self.sqlpath, self.dbpath))
+
+        # Write the table files to the tabledata directory
+        os.system("mkdir -p {}".format(directory))
+        tables = self.query("select tbl_name from sqlite_master where type='table'")['tbl_name']
+        tablepaths = [self.sqlpath]
+        for table in tables:
+            print('Generating {}...'.format(table))
+            tablepath = '{0}/{1}.sql'.format(directory, table)
+            tablepaths.append(tablepath)
+            with open(tablepath, 'w') as f:
+                for line in self.conn.iterdump():
+                    if sys.version_info.major == 2:
+                        # line = line.decode('utf-8')
+                        line = line.encode('utf-8').decode('utf-8')
+
+                    line = line.strip()
+                    if line.startswith('INSERT INTO "{}"'.format(table)):
+                        f.write('%s\n' % line.encode('ascii', 'ignore'))
+
+        print("Tables saved to directory {}/".format(directory))
+        print("""=======================================================================================
+You can now run git to commit and push these changes, if needed.
+For example, if on the master branch you can do the following:
+  git add {0} {1}/*.sql
+  git commit -m "COMMIT MESSAGE HERE"
+  git push origin master
+You can then issue a pull request on GitHub to have these changes reviewed and accepted
+======================================================================================="""
+              .format(self.sqlpath, directory))
+
+        # Collect name and commit message from the user and push to Github
+        # if git:
+        #     user = get_input('Please enter your name : ')
+        #     commit = get_input('Briefly describe the changes you have made : ')
+        #     if user and commit:
+        #         try:  # If not on the same branch, changes are overwritten or aborted: BAD
+        #             call('git checkout {}'.format(branch), shell=True)
+        #             call('git pull origin {}'.format(branch), shell=True)
+        #             call('git add {}'.format(' '.join(tablepaths)), shell=True)
+        #             call('git commit -m "(via astrodbkit) {}"'.format(commit), shell=True)
+        #             call('git push origin {}'.format(branch), shell=True)
+        #         except:
+        #             print('Changes written to file but not pushed to Github. Make sure you are working from a git repo.')
+        #     else:
+        #         print('Sorry, astrodbkit needs a username and commit message to push changes to Guthub.')
 
     def schema(self, table):
         """
