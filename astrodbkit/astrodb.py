@@ -1175,7 +1175,7 @@ class Database:
             The result of the database query
         """
         try:
-            # Restricy queries to SELECT and PRAGMA statements
+            # Restrict queries to SELECT and PRAGMA statements
             if SQL.lower().startswith('select') or SQL.lower().startswith('pragma'):
 
                 # Make the query explicit so that column and table names are preserved
