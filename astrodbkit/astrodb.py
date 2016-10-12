@@ -452,7 +452,7 @@ class Database:
             print('\nFinished clean up on {} table.'.format(table.upper()))
 
     # @property
-    def close(self, silent=False):
+    def close(self, silent=False, directory='tabledata'):
         """
         Close the database and ask to save and delete the file
 
@@ -462,13 +462,13 @@ class Database:
             Close quietly without saving or deleting (Default: False).
         """
         if not silent:
-            saveme = get_input("Save database contents to 'tabledata/'? ([y], n) \n"
-                               "To save under a folder name, run db.save() before closing. ")
-            if not saveme.lower() == 'n':
+            saveme = get_input("Save database contents to '{}/'? (y, [n]) \n"
+                               "To save under a folder name, run db.save() before closing. ".format(directory))
+            if saveme.lower() == 'y':
                 self.save()
 
             delete = get_input("Do you want to delete {0}? (y,[n]) \n"
-                               "Don't worry, a new one will be generated if you run astrodb.Database({1}) "
+                               "Don't worry, a new one will be generated if you run astrodb.Database('{1}') "
                                .format(self.dbpath, self.sqlpath))
             if delete.lower() == 'y':
                 print("Deleting {}".format(self.dbpath))
