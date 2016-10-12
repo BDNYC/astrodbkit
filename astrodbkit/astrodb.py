@@ -138,6 +138,10 @@ class Database:
         else:
             raise AttributeError("Sorry, no such file '{}'".format(dbpath))
 
+    def __repr__(self):
+        self.info()
+        return ''
+
     def add_data(self, data, table, delimiter='|', bands='', verbose=False):
         """
     Adds data to the specified database table. Column names must match table fields to insert,
@@ -663,12 +667,19 @@ class Database:
         except:
             return SQL, ''
 
+    def help(self):
+        """
+        See some brief instructions on how to use astrodb.Database
+        """
+        # TODO: Write a brief help file here
+
     def info(self):
         """
         Prints out information for the loaded database, namely the available tables and the number of entries for each.
         """
         t = self.query("SELECT * FROM sqlite_master WHERE type='table'", fmt='table')
         all_tables = t['name'].tolist()
+        print('Database file: {} \nSQL: {}\n'.format(self.dbpath, self.sqlpath))
         print('Database Inventory')
         print('==================')
         for table in ['sources'] + [t for t in all_tables if
