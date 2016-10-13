@@ -140,6 +140,8 @@ class Database:
 
     def __repr__(self):
         self.info()
+        print("\nFor a quick summary of how to use astrodb.Database, type db.help(), \n"
+              "where 'db' corresponds to the name of the astrodb.Database instance.")
         return ''
 
     def add_data(self, data, table, delimiter='|', bands='', verbose=False):
@@ -669,9 +671,28 @@ class Database:
 
     def help(self):
         """
-        See some brief instructions on how to use astrodb.Database
+        See a quick summary of the most useful methods in astrodb.Database
         """
-        # TODO: Write a brief help file here
+
+        helptext = """
+The astrodb.Database class, hereafter db, provides a variety of methods to interact with a SQLite database file.
+Docstrings are available for all methods and can be accessed in the usual manner; eg, help(db.query).
+We list a few key methods below.
+
+    * db.query() - send SELECT commands to the database. Returns results in a variety of formats
+    * db.add_data() - add data to an existing table, either by providing a file or by providing the data itself
+    * db.table() - create or modify tables in the database
+    * db.modify() - send more general SQL commands to the database
+    * db.info() - get a quick summary of the contents of the database
+    * db.schema() - quickly examine the columns, types, etc of a specified table
+    * db.search() - search through a table to find entries matching the criteria
+    * db.references() - search for all entries in all tables matching the criteria. Useful for publication
+    * db.save() - export a copy of the database in ascii format, which can then be re-populated by astrodb.Database
+    * db.close() - close the database connection, will prompt to save and to delete the binary database file
+
+The full documentation can be found online at: http://astrodbkit.readthedocs.io/en/latest/index.html
+        """
+        print(helptext)
 
     def info(self):
         """
@@ -679,7 +700,7 @@ class Database:
         """
         t = self.query("SELECT * FROM sqlite_master WHERE type='table'", fmt='table')
         all_tables = t['name'].tolist()
-        print('Database file: {} \nSQL: {}\n'.format(self.dbpath, self.sqlpath))
+        print('\nDatabase path: {} \nSQL path: {}\n'.format(self.dbpath, self.sqlpath))
         print('Database Inventory')
         print('==================')
         for table in ['sources'] + [t for t in all_tables if
@@ -705,7 +726,7 @@ class Database:
         Returns
         -------
         data_tables: dict
-                Returns a dictionary of astropy tables with the table name as the keys.
+            Returns a dictionary of astropy tables with the table name as the keys.
 
         """
         data_tables = {}
