@@ -2,6 +2,11 @@
 # encoding: utf-8
 # Author: Joe Filippazzo, jcfilippazzo@gmail.com
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 import io
 import os
 import sys
@@ -49,28 +54,16 @@ def create_database(dbpath):
 
 
 class Database:
-    """
-    Initialize the database.
-
-    Parameters
-    ----------
-    dbpath: str
-        The path to the database file.
-
-    Returns
-    -------
-    object
-        The database object
-    """
-
-    def __init__(self, dbpath):
+    def __init__(self, dbpath, directory='tabledata'):
         """
         Initialize the database.
 
         Parameters
         ----------
         dbpath: str
-            The path to the database file.
+            The path to the .db or .sql database file.
+        directory: str
+            Folder in which individual tables are stored (Default: tabledata)
 
         Returns
         -------
@@ -80,11 +73,46 @@ class Database:
         """
         if os.path.isfile(dbpath):
 
+            # Alternatively, just list the directory with the schema and .sql files and require that dbpath
+            # is the schema file, then load the tables individually
+
+            # If it is a .sql file, create an empty database in the
+            # working directory and generate the database from file
+            if dbpath.endswith('.sql'):
+                self.sqlpath = dbpath
+                self.dbpath = dbpath.replace('.sql', '.db')
+
+                # If the .db file already exists, rename it with the date
+                if os.path.isfile(self.dbpath):
+                    import datetime
+                    date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")
+                    print("Renaming existing file {} to {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
+                    os.system("mv {} {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
+
+                # Make the new database from the .sql files
+                # First the schema...
+                os.system("sqlite3 {} < {}".format(self.dbpath, self.sqlpath))
+
+                # Then load the table data...
+                print('Populating database...')
+                tables = os.popen('sqlite3 {} ".tables"'.format(self.dbpath)).read().replace('\n',' ').split()
+                for table in tables:
+                    os.system('sqlite3 {0} ".read {1}/{2}.sql"'.format(self.dbpath, directory, table))
+            elif dbpath.endswith('.db'):
+                self.sqlpath = dbpath.replace('.db', '.sql')
+                self.dbpath = dbpath
+            else:
+                self.sqlpath = dbpath + '.sql'
+                self.dbpath = dbpath
+
+            # Create .sql schema file if it doesn't exist
+            os.system('touch {}'.format(self.sqlpath.replace(' ', '\ ')))
+
             # Create connection
-            con = sqlite3.connect(dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
+            con = sqlite3.connect(self.dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
             con.text_factory = sqlite3.OptimizedUnicode
             self.conn = con
-            self.close = self.conn.close
+            self.curs = con.cursor()
             self.list = con.cursor().execute
 
             # Make dictionary
@@ -105,8 +133,16 @@ class Database:
             # Activate foreign key support
             self.list('PRAGMA foreign_keys=ON')
 
+            print("Database ready for use")
+
         else:
-            print("Sorry, no such file '{}'".format(dbpath))
+            raise AttributeError("Sorry, no such file '{}'".format(dbpath))
+
+    def __repr__(self):
+        self.info()
+        print("\nFor a quick summary of how to use astrodb.Database, type db.help(), \n"
+              "where 'db' corresponds to the name of the astrodb.Database instance.")
+        return ''
 
     def add_data(self, data, table, delimiter='|', bands='', verbose=False):
         """
@@ -306,7 +342,7 @@ class Database:
             self.list("DROP TABLE TempOldTable_foreign")
 
             if verbose:
-                print('Successfully added foreign key.')
+                # print('Successfully added foreign key.')
                 t = self.query('SELECT name, sql FROM sqlite_master', fmt='table')
                 print(t[t['name'] == table]['sql'][0].replace(',', ',\n'))
 
@@ -420,6 +456,32 @@ class Database:
             return 'abort'
         else:
             print('\nFinished clean up on {} table.'.format(table.upper()))
+
+    # @property
+    def close(self, silent=False, directory='tabledata'):
+        """
+        Close the database and ask to save and delete the file
+
+        Parameters
+        ----------
+        silent: bool
+            Close quietly without saving or deleting (Default: False).
+        """
+        if not silent:
+            saveme = get_input("Save database contents to '{}/'? (y, [n]) \n"
+                               "To save under a folder name, run db.save() before closing. ".format(directory))
+            if saveme.lower() == 'y':
+                self.save()
+
+            delete = get_input("Do you want to delete {0}? (y,[n]) \n"
+                               "Don't worry, a new one will be generated if you run astrodb.Database('{1}') "
+                               .format(self.dbpath, self.sqlpath))
+            if delete.lower() == 'y':
+                print("Deleting {}".format(self.dbpath))
+                os.system("rm {}".format(self.dbpath))
+
+        print('Closing connection')
+        self.conn.close()
 
     def _compare_records(self, table, duplicate, options=['r', 'c', 'k', 'sql']):
         """
@@ -607,6 +669,46 @@ class Database:
         except:
             return SQL, ''
 
+    def help(self):
+        """
+        See a quick summary of the most useful methods in astrodb.Database
+        """
+
+        helptext = """
+The astrodb.Database class, hereafter db, provides a variety of methods to interact with a SQLite database file.
+Docstrings are available for all methods and can be accessed in the usual manner; eg, help(db.query).
+We list a few key methods below.
+
+    * db.query() - send SELECT commands to the database. Returns results in a variety of formats
+    * db.add_data() - add data to an existing table, either by providing a file or by providing the data itself
+    * db.table() - create or modify tables in the database
+    * db.modify() - send more general SQL commands to the database
+    * db.info() - get a quick summary of the contents of the database
+    * db.schema() - quickly examine the columns, types, etc of a specified table
+    * db.search() - search through a table to find entries matching the criteria
+    * db.references() - search for all entries in all tables matching the criteria. Useful for publication
+    * db.save() - export a copy of the database in ascii format, which can then be re-populated by astrodb.Database
+    * db.close() - close the database connection, will prompt to save and to delete the binary database file
+
+The full documentation can be found online at: http://astrodbkit.readthedocs.io/en/latest/index.html
+        """
+        print(helptext)
+
+    def info(self):
+        """
+        Prints out information for the loaded database, namely the available tables and the number of entries for each.
+        """
+        t = self.query("SELECT * FROM sqlite_master WHERE type='table'", fmt='table')
+        all_tables = t['name'].tolist()
+        print('\nDatabase path: {} \nSQL path: {}\n'.format(self.dbpath, self.sqlpath))
+        print('Database Inventory')
+        print('==================')
+        for table in ['sources'] + [t for t in all_tables if
+                                    t not in ['sources', 'sqlite_sequence']]:
+            x = self.query('select count() from {}'.format(table), fmt='array', fetch='one')
+            if x is None: continue
+            print('{}: {}'.format(table.upper(), x[0]))
+
     def inventory(self, source_id, fetch=False, fmt='table'):
         """
         Prints a summary of all objects in the database. Input string or list of strings in **ID** or **unum**
@@ -624,7 +726,7 @@ class Database:
         Returns
         -------
         data_tables: dict
-                Returns a dictionary of astropy tables with the table name as the keys.
+            Returns a dictionary of astropy tables with the table name as the keys.
 
         """
         data_tables = {}
@@ -1086,7 +1188,8 @@ class Database:
         params: sequence
             Mimics the native parameter substitution of sqlite3
         fmt: str
-            Returns the data as a dictionary, array, or astropy.table given 'dict', 'array', or 'table'
+            Returns the data as a dictionary, array, astropy.table, or pandas.Dataframe
+            given 'dict', 'array', 'table', or 'pandas'
         fetch: str
             String indicating whether to return **all** results or just **one**
         unpack: bool
@@ -1104,7 +1207,7 @@ class Database:
             The result of the database query
         """
         try:
-            # Restricy queries to SELECT and PRAGMA statements
+            # Restrict queries to SELECT and PRAGMA statements
             if SQL.lower().startswith('select') or SQL.lower().startswith('pragma'):
 
                 # Make the query explicit so that column and table names are preserved
@@ -1147,9 +1250,17 @@ class Database:
 
                     # Or return the results
                     else:
-                        if fetch == 'one': dictionary, array = dictionary[0], array if unpack else np.array(
-                            list(array[0]))
-                        return table if fmt == 'table' else dictionary if fmt == 'dict' else array
+                        if fetch == 'one':
+                            dictionary, array = dictionary[0], array if unpack else np.array(list(array[0]))
+
+                        if fmt == 'table':
+                            return table
+                        elif fmt == 'dict':
+                            return dictionary
+                        elif fmt == 'pandas':
+                            return table.to_pandas()
+                        else:
+                            return array
 
                 else:
                     return
@@ -1226,6 +1337,76 @@ class Database:
                     pprint(data, title=table.upper())
 
         if fetch: return data_tables
+
+    def save(self, directory='tabledata'):
+        """
+        Dump the entire contents of the database into a folder **directory** as ascii files
+
+        Parameters
+        ==========
+        directory: str
+            Directory name to store individual table data
+        """
+        from subprocess import call
+
+        # Create the .sql file is it doesn't exist, i.e. if the Database class called a .db file initially
+        if not os.path.isfile(self.sqlpath):
+            self.sqlpath = self.dbpath.replace('.db', '.sql')
+            os.system('touch {}'.format(self.sqlpath))
+
+        # # Write the data to the .sql file
+        # with open(self.sqlpath, 'w') as f:
+        #     for line in self.conn.iterdump():
+        #         f.write('%s\n' % line)
+
+        # Alternatively...
+        # Write the schema
+        os.system("echo '.output {}\n.schema' | sqlite3 {}".format(self.sqlpath, self.dbpath))
+
+        # Write the table files to the tabledata directory
+        os.system("mkdir -p {}".format(directory))
+        tables = self.query("select tbl_name from sqlite_master where type='table'")['tbl_name']
+        tablepaths = [self.sqlpath]
+        for table in tables:
+            print('Generating {}...'.format(table))
+            tablepath = '{0}/{1}.sql'.format(directory, table)
+            tablepaths.append(tablepath)
+            with open(tablepath, 'w') as f:
+                for line in self.conn.iterdump():
+                    if sys.version_info.major == 2:
+                        # line = line.decode('utf-8')
+                        line = line.encode('utf-8').decode('utf-8')
+
+                    line = line.strip()
+                    if line.startswith('INSERT INTO "{}"'.format(table)):
+                        f.write('%s\n' % line.encode('ascii', 'ignore'))
+
+        print("Tables saved to directory {}/".format(directory))
+        print("""=======================================================================================
+You can now run git to commit and push these changes, if needed.
+For example, if on the master branch you can do the following:
+  git add {0} {1}/*.sql
+  git commit -m "COMMIT MESSAGE HERE"
+  git push origin master
+You can then issue a pull request on GitHub to have these changes reviewed and accepted
+======================================================================================="""
+              .format(self.sqlpath, directory))
+
+        # Collect name and commit message from the user and push to Github
+        # if git:
+        #     user = get_input('Please enter your name : ')
+        #     commit = get_input('Briefly describe the changes you have made : ')
+        #     if user and commit:
+        #         try:  # If not on the same branch, changes are overwritten or aborted: BAD
+        #             call('git checkout {}'.format(branch), shell=True)
+        #             call('git pull origin {}'.format(branch), shell=True)
+        #             call('git add {}'.format(' '.join(tablepaths)), shell=True)
+        #             call('git commit -m "(via astrodbkit) {}"'.format(commit), shell=True)
+        #             call('git push origin {}'.format(branch), shell=True)
+        #         except:
+        #             print('Changes written to file but not pushed to Github. Make sure you are working from a git repo.')
+        #     else:
+        #         print('Sorry, astrodbkit needs a username and commit message to push changes to Guthub.')
 
     def schema(self, table):
         """
@@ -1356,6 +1537,53 @@ class Database:
             else:
                 print("No results found for {} in the {} table.".format(criterion, table.upper()))
 
+    def snapshot(self, name_db='export.db', version=1.0):
+        """
+        Function to generate a snapshot of the database by version number.
+
+        Parameters
+        ----------
+        name_db: string
+            Name of the new database (Default: export.db)
+        version: float
+            Version number to export (Default: 1.0)
+        """
+
+        # Check if file exists
+        if os.path.isfile(name_db):
+            import datetime
+            date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")
+            print("Renaming existing file {} to {}".format(name_db, name_db.replace('.db', date + '.db')))
+            os.system("mv {} {}".format(name_db, name_db.replace('.db', date + '.db')))
+
+        # Create a new database from existing database schema
+        t, = self.query("select sql from sqlite_master where type = 'table'", unpack=True)
+        schema = ';\n'.join(t) + ';'
+        os.system("sqlite3 {} '{}'".format(name_db, schema))
+
+        # Attach database to newly created database
+        db = Database(name_db)
+        db.list('PRAGMA foreign_keys=OFF')  # Temporarily deactivate foreign keys for the snapshot
+        db.list("ATTACH DATABASE '{}' AS orig".format(self.dbpath))
+
+        # For each table in database, insert records if they match version number
+        t = db.query("SELECT * FROM sqlite_master WHERE type='table'", fmt='table')
+        all_tables = t['name'].tolist()
+        for table in [t for t in all_tables if t not in ['sqlite_sequence', 'changelog']]:
+            # Check if this is table with version column
+            metadata = db.query("PRAGMA table_info({})".format(table), fmt='table')
+            columns, types, required, pk = [np.array(metadata[n]) for n in ['name', 'type', 'notnull', 'pk']]
+            print(table, columns)
+            if 'version' not in columns:
+                db.modify("INSERT INTO {0} SELECT * FROM orig.{0}".format(table))
+            else:
+                db.modify("INSERT INTO {0} SELECT * FROM orig.{0} WHERE orig.{0}.version<={1}".format(table, version))
+
+        # Detach original database
+        db.list('DETACH DATABASE orig')
+        db.list('PRAGMA foreign_keys=ON')
+        db.close()
+
     def table(self, table, columns, types, constraints='', pk='', new_table=False):
         """
         Rearrange, add or delete columns from database **table** with desired ordered list of **columns** and corresponding data **types**.
@@ -1373,7 +1601,7 @@ class Database:
         pk: string or list
             Name(s) of the primary key(s) if other than ID
         new_table: bool
-                Create a new table
+            Create a new table
 
         """
         goodtogo = True
@@ -1531,7 +1759,7 @@ def adapt_array(arr):
     """
     out = io.BytesIO()
     np.save(out, arr), out.seek(0)
-    return buffer(out.read())
+    return buffer(out.read())  # TODO: Fix for Python 3
 
 
 def convert_array(array):
@@ -1554,6 +1782,7 @@ def convert_array(array):
     return np.load(out)
 
 
+# TODO: Eliminate this, not being used anymore
 def adapt_spectrum(spec):
     """
     Adapts a SPECTRUM object into a string to put into the database
@@ -1807,8 +2036,8 @@ sqlite3.register_adapter(np.ndarray, adapt_array)
 # sqlite3.register_adapter(str, adapt_spectrum)
 
 # Register the converters
-sqlite3.register_converter("ARRAY", convert_array)
-sqlite3.register_converter("SPECTRUM", convert_spectrum)
+sqlite3.register_converter(str("ARRAY"), convert_array)
+sqlite3.register_converter(str("SPECTRUM"), convert_spectrum)
 
 
 def pprint(data, names='', title='', formats={}):
@@ -1866,9 +2095,10 @@ def pprint(data, names='', title='', formats={}):
             print(' '.join([str(i[key]).decode('utf-8')[:max_length].rjust(str_lengths[key])
                            if i[key] else '-'.rjust(str_lengths[key]) for key in pdata.keys()]))
 
+
 def clean_header(header):
     try:
-        header = pf.open(File, ignore_missing_end=True)[0].header
+        header = pf.open(File, ignore_missing_end=True)[0].header  # TODO: Fix missing File reference
         new_header = pf.Header()
         for x, y, z in header.cards: new_header[x.replace('.', '_').replace('#', '')] = (y, z)
         header = pf.PrimaryHDU(header=new_header).header
@@ -1897,8 +2127,9 @@ def _help():
 
 def scrub(data, units=False):
     """
-    For input data [w,f,e] or [w,f] returns the list with NaN, negative, and zero flux (and corresponsing wavelengths and errors) removed.
-        """
+    For input data [w,f,e] or [w,f] returns the list with NaN, negative, and zero flux
+    (and corresponding wavelengths and errors) removed.
+    """
     units = [i.unit if hasattr(i, 'unit') else 1 for i in data]
     data = [np.asarray(i.value if hasattr(i, 'unit') else i, dtype=np.float32) for i in data if
             isinstance(i, np.ndarray)]
@@ -2023,5 +2254,5 @@ def _autofill_spec_record(record):
     return record
 
 
-type_dict = {'INTEGER': np.dtype('int64'), 'REAL': np.dtype('float64'), 'TEXT': np.dtype('S128'),
-             'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('S256'), 'BOOLEAN': np.dtype('bool')}
+type_dict = {'INTEGER': np.dtype('int64'), 'REAL': np.dtype('float64'), 'TEXT': np.dtype('object'),
+             'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('object'), 'BOOLEAN': np.dtype('bool')}

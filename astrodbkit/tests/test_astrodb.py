@@ -1,10 +1,9 @@
 import pytest
 import tempfile
-import os, sys
+import os
 from astropy.utils.data import download_file
 from .. import astrodb
 from sqlite3 import IntegrityError
-import io
 
 filename = os.path.join(tempfile.mkdtemp(), 'empty_db.db')
 
@@ -153,3 +152,17 @@ def test_references():
     t = bdnyc_db.query('SELECT id FROM publications', fmt='table')
     id = t['id'][0]
     bdnyc_db.references(id, column_name='publication_id')
+
+
+def test_save():
+    empty_db.save(directory='tempempty')
+    bdnyc_db.save(directory='tempdata')
+
+
+def test_close(monkeypatch):
+    # Fake user input
+    inputs = ['n', 'n']
+    input_generator = (i for i in inputs)
+    monkeypatch.setattr('astrodbkit.astrodb.get_input', lambda prompt: next(input_generator))
+
+    bdnyc_db.close()
