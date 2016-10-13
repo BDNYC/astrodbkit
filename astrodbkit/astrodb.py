@@ -1373,13 +1373,12 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
             tablepaths.append(tablepath)
             with open(tablepath, 'w') as f:
                 for line in self.conn.iterdump():
-                    if sys.version_info.major == 2:
-                        # line = line.decode('utf-8')
-                        line = line.encode('utf-8').decode('utf-8')
-
                     line = line.strip()
                     if line.startswith('INSERT INTO "{}"'.format(table)):
-                        f.write('%s\n' % line.encode('ascii', 'ignore'))
+                        if sys.version_info.major == 2:
+                            f.write(u'{}\n'.format(line).encode('utf-8'))
+                        else:
+                            f.write(u'{}\n'.format(line))
 
         print("Tables saved to directory {}/".format(directory))
         print("""=======================================================================================
