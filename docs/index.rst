@@ -40,15 +40,38 @@ Alternatively, you can `download and use the BDNYC Database`_, which contains th
 Accessing the Database
 ======================
 
-To start using the database, launch Python, import the module, then initialize the database with the :class:`astrodb.Database()` class like so::
+To start using the database, launch Python, import the module, then initialize the database with the :py:class:`astrodb.Database()` class like so::
 
     from astrodbkit import astrodb
     db = astrodb.Database(dbpath)
 
 You are now ready to use the database.
 
+.. note:: The path to the database can either be the binary database file (typically ending in .db) or an .sql file that contains the schema for the database.
+          In the later case, the database is constructed by referring to the schema and the directory where the tables of data are located (by default, 'tabledata') and a .db file is created.
+          You can use the :py:meth:`~astrodb.Database.save` method to output a database to a schema file and the individual tables to a specified directory.
+          This workflow can better facilitate version control.
+
 Querying the Database
 =====================
+
+Getting Help
+------------
+
+It can be daunting to start using the database without a lot of prior knowledge of the contents of the database or the functionality of astrodbkit.
+For this purpose we have created two utility methods::
+
+   db.info()
+
+Will list the names of the files that have been loaded as well as the contents of the database: every table and the number of sources in it.
+
+And::
+
+   db.help()
+
+Will give a brief overview of what :class:`astrodb.Database()` is and summarizes the more widely used methods. More details on each method can be obtained by using Python's help system, for example::
+
+   help(db.query)
 
 Specialized Searches
 --------------------
@@ -100,7 +123,8 @@ For example, you can get an Astropy table of all the records with a spectral typ
 
    db.query("SELECT * FROM spectral_types WHERE spectral_type=12", fmt='table')
 
-By default, this returns the data as a list of arrays. By setting *fmt='dict'* or *fmt='table'* the data will be returned as a list of Python dictionaries or an Astropy table.
+By default, this returns the data as a list of arrays. Alternative options for the fmt flag include *'dict'* for a list of Python dictionaries,
+*'table'* for an Astropy Table, and *'pandas'* for a pandas DataFrame.
 
 `Here is a detailed post about how to write a SQL query`_.
 
@@ -157,6 +181,18 @@ You can import and call votools directly, which has additional options you can s
 
 .. note:: Special characters (such as accents or greek letters) can cause astropy and thus file output to fail in Python 2.
    Python 3 handles this differently and will not fail in this instance.
+
+Saving the Full Database
+========================
+
+If changes have been made to the database, such as by adding new data or modifying existing entries, you will want to
+use the :py:meth:`~astrodb.Database.save` method to dump the contents of the database to ascii files.
+:py:meth:`~astrodb.Database.save` writes a schema file and outputs all tables to individual files in a directory of your choice (by default, 'tabledata').
+This directory and the schema file can be version controlled with, for example, git, to facilitate tracking changes in the database.
+
+When finished working with the database, the :py:meth:`~astrodb.Database.close` method will close the connection.
+
+.. note:: :py:meth:`~astrodb.Database.close` will prompt to save the database to the default directory.
 
 Contents
 ========
