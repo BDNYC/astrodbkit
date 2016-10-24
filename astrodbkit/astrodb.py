@@ -1581,7 +1581,7 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
         # Detach original database
         db.list('DETACH DATABASE orig')
         db.list('PRAGMA foreign_keys=ON')
-        db.close()
+        db.close(silent=True)
 
     def table(self, table, columns, types, constraints='', pk='', new_table=False):
         """
