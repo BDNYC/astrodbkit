@@ -1115,7 +1115,7 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
         color: str
             The color used for the data
         norm: bool, sequence
-                True or (min,max) wavelength range in which to normalize the spectrum
+            True or (min,max) wavelength range in which to normalize the spectrum
 
         """
         i = self.query("SELECT * FROM {} WHERE id={}".format(table, spectrum_id), fetch='one', fmt='dict')
@@ -1180,7 +1180,12 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
     def query(self, SQL, params='', fmt='array', fetch='all', unpack=False, export='', \
               verbose=False, use_converters=True):
         """
-        Wrapper for cursors so data can be retrieved as a list or dictionary from same method.
+        Returns data satisfying the provided **SQL** script. Only SELECT or PRAGMA statements are allowed.
+        Results can be returned in a variety of formats.
+        For example, to extract the ra and dec of all entries in SOURCES in astropy.Table format one can write:
+            data = db.query('SELECT ra, dec FROM sources', fmt='table')
+
+        For more general SQL statements, see the modify() method.
 
         Parameters
         ----------
