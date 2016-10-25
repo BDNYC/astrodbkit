@@ -323,15 +323,15 @@ class Database:
             self.list("ALTER TABLE {0} RENAME TO TempOldTable_foreign".format(table))
 
             # Re-create the table specifying the FOREIGN KEY
-            sqltxt = "CREATE TABLE {0} ({1}".format(table, ', '.join(['{} {} {}'.format(c, t, r)
+            sqltxt = "CREATE TABLE {0} (\n\t{1}".format(table, ', \n\t'.join(['{} {} {}'.format(c, t, r)
                                                                       for c, t, r in zip(columns, types, constraints)]))
-            sqltxt += ', PRIMARY KEY({})'.format(', '.join([elem for elem in pk_names]))
+            sqltxt += ', \n\tPRIMARY KEY({})'.format(', '.join([elem for elem in pk_names]))
             if isinstance(key_child, type(list())):
                 for kc, p, kp in zip(key_child, parent, key_parent):
-                    sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(kc, p, kp)
+                    sqltxt += ', \n\tFOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(kc, p, kp)
             else:
-                sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(key_child, parent, key_parent)
-            sqltxt += ' )'
+                sqltxt += ', \n\tFOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(key_child, parent, key_parent)
+            sqltxt += ' \n)'
 
             self.list(sqltxt)
 
@@ -344,7 +344,8 @@ class Database:
             if verbose:
                 # print('Successfully added foreign key.')
                 t = self.query('SELECT name, sql FROM sqlite_master', fmt='table')
-                print(t[t['name'] == table]['sql'][0].replace(',', ',\n'))
+                # print(t[t['name'] == table]['sql'][0].replace(',', ',\n'))
+                print(t[t['name'] == table]['sql'][0])
 
         except:
             print('Error attempting to add foreign key.')
@@ -1651,9 +1652,9 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
                 # Rename the old table and create a new one
                 self.list("DROP TABLE IF EXISTS TempOldTable")
                 self.list("ALTER TABLE {0} RENAME TO TempOldTable".format(table))
-                create_txt = "CREATE TABLE {0} ({1}".format(table, ', '.join(
+                create_txt = "CREATE TABLE {0} (\n\t{1}".format(table, ', \n\t'.join(
                         ['{} {} {}'.format(c, t, r) for c, t, r in zip(columns, types, constraints)]))
-                create_txt += ', PRIMARY KEY({}))'.format(', '.join([elem for elem in pk]))
+                create_txt += ', \n\tPRIMARY KEY({})\n)'.format(', '.join([elem for elem in pk]))
                 # print(create_txt.replace(',', ',\n'))
                 self.list(create_txt)
 
@@ -1671,10 +1672,11 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
 
             # If the table does not exist and new_table is True, create it
             elif table not in tables and new_table:
-                create_txt = "CREATE TABLE {0} ({1}".format(table, ', '.join(
+                create_txt = "CREATE TABLE {0} (\n\t{1}".format(table, ', \n\t'.join(
                     ['{} {} {}'.format(c, t, r) for c, t, r in zip(columns, types, constraints)]))
-                create_txt += ', PRIMARY KEY({}))'.format(', '.join([elem for elem in pk]))
-                print(create_txt.replace(',', ',\n'))
+                create_txt += ', \n\tPRIMARY KEY({})\n)'.format(', '.join([elem for elem in pk]))
+                # print(create_txt.replace(',', ',\n'))
+                print(create_txt)
                 self.list(create_txt)
 
             # Otherwise the table to be modified doesn't exist or the new table to add already exists, so do nothing
