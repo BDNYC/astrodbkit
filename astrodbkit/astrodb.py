@@ -714,16 +714,19 @@ The astrodb.Database class, hereafter db, provides a variety of methods to inter
 Docstrings are available for all methods and can be accessed in the usual manner; eg, help(db.query).
 We list a few key methods below.
 
+    Methods to explore the database:
     * db.query() - send SELECT commands to the database. Returns results in a variety of formats
-    * db.add_data() - add data to an existing table, either by providing a file or by providing the data itself
-    * db.table() - create or modify tables in the database
-    * db.modify() - send more general SQL commands to the database
     * db.info() - get a quick summary of the contents of the database
     * db.schema() - quickly examine the columns, types, etc of a specified table
     * db.search() - search through a table to find entries matching the criteria
-    * db.references() - search for all entries in all tables matching the criteria. Useful for publication
+    * db.inventory() - search for all entries that match the specified source_id
+    * db.references() - search for all entries in all tables matching the criteria. Useful for publications
+
+    Methods to modify the database:
+    * db.add_data() - add data to an existing table, either by providing a file or by providing the data itself
+    * db.table() - create or modify tables in the database
+    * db.modify() - send more general SQL commands to the database
     * db.save() - export a copy of the database in ascii format, which can then be re-populated by astrodb.Database
-    * db.close() - close the database connection, will prompt to save and to delete the binary database file
 
 The full documentation can be found online at: http://astrodbkit.readthedocs.io/en/latest/index.html
         """
@@ -1652,10 +1655,6 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
             print("Column 1 must be called 'id'")
             goodtogo = False
 
-        # if types[0].upper() != 'INTEGER PRIMARY KEY':
-        #     print("'id' column type must be 'INTEGER PRIMARY KEY'")
-        #     goodtogo = False
-
         if constraints:
             if 'UNIQUE' not in constraints[0].upper() and 'NOT NULL' not in constraints[0].upper():
                 print("'id' column constraints must be 'UNIQUE NOT NULL'")
@@ -1787,12 +1786,12 @@ class InputError(Exception):
     """
 
     def __init__(self, message):
-        self.message = message
         Exception.__init__(self, message)
 
-# ==============================================================================================================================================
-# ================================= Adapters and converters for special data types =============================================================
-# ==============================================================================================================================================
+# ======================================================================================================================
+# ================================= Adapters and converters for special data types =====================================
+# ======================================================================================================================
+
 
 def adapt_array(arr):
     """
@@ -1832,29 +1831,6 @@ def convert_array(array):
     out = io.BytesIO(array)
     out.seek(0)
     return np.load(out)
-
-
-# TODO: Eliminate this, not being used anymore
-def adapt_spectrum(spec):
-    """
-    Adapts a SPECTRUM object into a string to put into the database
-
-    Parameters
-    ----------
-    spec: str, astrodbkit.astrodb.Spectrum
-        The spectrum object to convert or string to put into the database
-
-    Returns
-    -------
-    spec: str
-            The file path to place in the database
-    """
-    if isinstance(spec, str):
-        pass
-    else:
-        spec = '$BDNYC_spectra' + spec.path.split('BDNYC_spectra')[1]
-
-    return spec
 
 
 def convert_spectrum(File, verbose=False):
