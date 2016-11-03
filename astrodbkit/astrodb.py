@@ -97,6 +97,7 @@ class Database:
                 print('Populating database...')
                 tables = os.popen('sqlite3 {} ".tables"'.format(self.dbpath)).read().replace('\n',' ').split()
                 for table in tables:
+                    print('Loading {}'.format(table))
                     os.system('sqlite3 {0} ".read {1}/{2}.sql"'.format(self.dbpath, directory, table))
             elif dbpath.endswith('.db'):
                 self.sqlpath = dbpath.replace('.db', '.sql')
@@ -136,13 +137,46 @@ class Database:
             print("Database ready for use")
 
         else:
-            raise AttributeError("Sorry, no such file '{}'".format(dbpath))
+            raise InputError("Sorry, could not find the file '{}'".format(dbpath))
 
     def __repr__(self):
         self.info()
         print("\nFor a quick summary of how to use astrodb.Database, type db.help(), \n"
               "where 'db' corresponds to the name of the astrodb.Database instance.")
         return ''
+
+    def add_changelog(self, user="", mod_tables="", user_desc=""):
+        """
+        Add an entry to the changelog table. This should be run when changes or edits are done to the database.
+
+        Parameters
+        ----------
+        user: str
+            Name of the person who made the edits
+        mod_tables: str
+            Table or tables that were edited
+        user_desc: str
+            A short message describing the changes
+        """
+        import datetime
+        import socket
+
+        # Spit out warning messages if the user does not provide the needed information
+        if user == "" or mod_tables == "" or user_desc == "":
+            print("You must supply your name, the name(s) of table(s) edited, "
+                  "and a description for add_changelog() to work.")
+            raise InputError('Did not supply the required input, see help(db.add_changelog) for more information.\n'
+                             'Your inputs: \n\t user = {}\n\t mod_tables = {}\n\t user_desc = {}'.format(user, mod_tables, user_desc))
+
+        # Making tables all uppercase for consistency
+        mod_tables = mod_tables.upper()
+
+        data = list()
+        data.append(['date', 'user', 'machine_name', 'modified_tables', 'user_description'])
+        datestr = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        machine = socket.gethostname()
+        data.append([datestr, user, machine, mod_tables, user_desc])
+        self.add_data(data, 'changelog')
 
     def add_data(self, data, table, delimiter='|', bands='', verbose=False):
         """
@@ -323,15 +357,15 @@ class Database:
             self.list("ALTER TABLE {0} RENAME TO TempOldTable_foreign".format(table))
 
             # Re-create the table specifying the FOREIGN KEY
-            sqltxt = "CREATE TABLE {0} ({1}".format(table, ', '.join(['{} {} {}'.format(c, t, r)
+            sqltxt = "CREATE TABLE {0} (\n\t{1}".format(table, ', \n\t'.join(['{} {} {}'.format(c, t, r)
                                                                       for c, t, r in zip(columns, types, constraints)]))
-            sqltxt += ', PRIMARY KEY({})'.format(', '.join([elem for elem in pk_names]))
+            sqltxt += ', \n\tPRIMARY KEY({})'.format(', '.join([elem for elem in pk_names]))
             if isinstance(key_child, type(list())):
                 for kc, p, kp in zip(key_child, parent, key_parent):
-                    sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(kc, p, kp)
+                    sqltxt += ', \n\tFOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(kc, p, kp)
             else:
-                sqltxt += ', FOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(key_child, parent, key_parent)
-            sqltxt += ' )'
+                sqltxt += ', \n\tFOREIGN KEY ({0}) REFERENCES {1} ({2}) ON UPDATE CASCADE'.format(key_child, parent, key_parent)
+            sqltxt += ' \n)'
 
             self.list(sqltxt)
 
@@ -344,7 +378,8 @@ class Database:
             if verbose:
                 # print('Successfully added foreign key.')
                 t = self.query('SELECT name, sql FROM sqlite_master', fmt='table')
-                print(t[t['name'] == table]['sql'][0].replace(',', ',\n'))
+                # print(t[t['name'] == table]['sql'][0].replace(',', ',\n'))
+                print(t[t['name'] == table]['sql'][0])
 
         except:
             print('Error attempting to add foreign key.')
@@ -679,16 +714,19 @@ The astrodb.Database class, hereafter db, provides a variety of methods to inter
 Docstrings are available for all methods and can be accessed in the usual manner; eg, help(db.query).
 We list a few key methods below.
 
+    Methods to explore the database:
     * db.query() - send SELECT commands to the database. Returns results in a variety of formats
-    * db.add_data() - add data to an existing table, either by providing a file or by providing the data itself
-    * db.table() - create or modify tables in the database
-    * db.modify() - send more general SQL commands to the database
     * db.info() - get a quick summary of the contents of the database
     * db.schema() - quickly examine the columns, types, etc of a specified table
     * db.search() - search through a table to find entries matching the criteria
-    * db.references() - search for all entries in all tables matching the criteria. Useful for publication
+    * db.inventory() - search for all entries that match the specified source_id
+    * db.references() - search for all entries in all tables matching the criteria. Useful for publications
+
+    Methods to modify the database:
+    * db.add_data() - add data to an existing table, either by providing a file or by providing the data itself
+    * db.table() - create or modify tables in the database
+    * db.modify() - send more general SQL commands to the database
     * db.save() - export a copy of the database in ascii format, which can then be re-populated by astrodb.Database
-    * db.close() - close the database connection, will prompt to save and to delete the binary database file
 
 The full documentation can be found online at: http://astrodbkit.readthedocs.io/en/latest/index.html
         """
@@ -1114,9 +1152,10 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
         color: str
             The color used for the data
         norm: bool, sequence
-                True or (min,max) wavelength range in which to normalize the spectrum
+            True or (min,max) wavelength range in which to normalize the spectrum
 
         """
+
         i = self.query("SELECT * FROM {} WHERE id={}".format(table, spectrum_id), fetch='one', fmt='dict')
         if i:
             try:
@@ -1179,7 +1218,12 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
     def query(self, SQL, params='', fmt='array', fetch='all', unpack=False, export='', \
               verbose=False, use_converters=True):
         """
-        Wrapper for cursors so data can be retrieved as a list or dictionary from same method.
+        Returns data satisfying the provided **SQL** script. Only SELECT or PRAGMA statements are allowed.
+        Results can be returned in a variety of formats.
+        For example, to extract the ra and dec of all entries in SOURCES in astropy.Table format one can write:
+            data = db.query('SELECT ra, dec FROM sources', fmt='table')
+
+        For more general SQL statements, see the modify() method.
 
         Parameters
         ----------
@@ -1581,7 +1625,7 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
         # Detach original database
         db.list('DETACH DATABASE orig')
         db.list('PRAGMA foreign_keys=ON')
-        db.close()
+        db.close(silent=True)
 
     def table(self, table, columns, types, constraints='', pk='', new_table=False):
         """
@@ -1610,10 +1654,6 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
         if columns[0] != 'id':
             print("Column 1 must be called 'id'")
             goodtogo = False
-
-        # if types[0].upper() != 'INTEGER PRIMARY KEY':
-        #     print("'id' column type must be 'INTEGER PRIMARY KEY'")
-        #     goodtogo = False
 
         if constraints:
             if 'UNIQUE' not in constraints[0].upper() and 'NOT NULL' not in constraints[0].upper():
@@ -1651,9 +1691,9 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
                 # Rename the old table and create a new one
                 self.list("DROP TABLE IF EXISTS TempOldTable")
                 self.list("ALTER TABLE {0} RENAME TO TempOldTable".format(table))
-                create_txt = "CREATE TABLE {0} ({1}".format(table, ', '.join(
+                create_txt = "CREATE TABLE {0} (\n\t{1}".format(table, ', \n\t'.join(
                         ['{} {} {}'.format(c, t, r) for c, t, r in zip(columns, types, constraints)]))
-                create_txt += ', PRIMARY KEY({}))'.format(', '.join([elem for elem in pk]))
+                create_txt += ', \n\tPRIMARY KEY({})\n)'.format(', '.join([elem for elem in pk]))
                 # print(create_txt.replace(',', ',\n'))
                 self.list(create_txt)
 
@@ -1671,10 +1711,11 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
 
             # If the table does not exist and new_table is True, create it
             elif table not in tables and new_table:
-                create_txt = "CREATE TABLE {0} ({1}".format(table, ', '.join(
+                create_txt = "CREATE TABLE {0} (\n\t{1}".format(table, ', \n\t'.join(
                     ['{} {} {}'.format(c, t, r) for c, t, r in zip(columns, types, constraints)]))
-                create_txt += ', PRIMARY KEY({}))'.format(', '.join([elem for elem in pk]))
-                print(create_txt.replace(',', ',\n'))
+                create_txt += ', \n\tPRIMARY KEY({})\n)'.format(', '.join([elem for elem in pk]))
+                # print(create_txt.replace(',', ',\n'))
+                print(create_txt)
                 self.list(create_txt)
 
             # Otherwise the table to be modified doesn't exist or the new table to add already exists, so do nothing
@@ -1737,9 +1778,20 @@ class Spectrum:
         self.header = new_header
 
 
-# ==============================================================================================================================================
-# ================================= Adapters and converters for special data types =============================================================
-# ==============================================================================================================================================
+class InputError(Exception):
+    """Exception raised for errors in the input.
+
+    Attributes:
+        message -- explanation of the error
+    """
+
+    def __init__(self, message):
+        Exception.__init__(self, message)
+
+# ======================================================================================================================
+# ================================= Adapters and converters for special data types =====================================
+# ======================================================================================================================
+
 
 def adapt_array(arr):
     """
@@ -1779,29 +1831,6 @@ def convert_array(array):
     out = io.BytesIO(array)
     out.seek(0)
     return np.load(out)
-
-
-# TODO: Eliminate this, not being used anymore
-def adapt_spectrum(spec):
-    """
-    Adapts a SPECTRUM object into a string to put into the database
-
-    Parameters
-    ----------
-    spec: str, astrodbkit.astrodb.Spectrum
-        The spectrum object to convert or string to put into the database
-
-    Returns
-    -------
-    spec: str
-            The file path to place in the database
-    """
-    if isinstance(spec, str):
-        pass
-    else:
-        spec = '$BDNYC_spectra' + spec.path.split('BDNYC_spectra')[1]
-
-    return spec
 
 
 def convert_spectrum(File, verbose=False):
