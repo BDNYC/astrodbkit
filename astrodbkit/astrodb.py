@@ -1839,13 +1839,15 @@ def convert_spectrum(File, verbose=False):
 
     Parameters
     ----------
-    File: SPECTRUM
+    File: str
         The URL or filepath of the file to be converted into arrays.
+    verbose: bool
+        Whether or not to display some diagnostic information (Default: False)
 
     Returns
     -------
     sequence
-            The converted spectrum.
+        The converted spectrum.
 
     """
     spectrum, header = '', ''
@@ -1885,11 +1887,18 @@ def convert_spectrum(File, verbose=False):
             spectrum = __get_spec(spectrum, header, File)
 
             # Generate wl axis when needed
-            if not isinstance(spectrum[0],np.ndarray):
-                spectrum[0] = __create_waxis(header, len(spectrum[1]), File)
+            if not isinstance(spectrum[0], np.ndarray):
+                tempwav = __create_waxis(header, len(spectrum[1]), File)
+
+                # Check to see if it's a FIRE spectrum with CDELT1, if so needs wlog=True
+                if 'INSTRUME' in header.keys():
+                    if header['INSTRUME']=='FIRE' and 'CDELT1' in header.keys():
+                        tempwav = __create_waxis(header, len(spectrum[1]), File, wlog=True)
+
+                spectrum[0] = tempwav
 
             # If no wl axis generated, then clear out all retrieved data for object
-            if not isinstance(spectrum[0],np.ndarray):
+            if not isinstance(spectrum[0], np.ndarray):
                 spectrum = None
 
             if verbose: print('Read as FITS...')
@@ -1899,7 +1908,7 @@ def convert_spectrum(File, verbose=False):
                 spectrum, header = pf.getdata(downloaded_file, cache=True, header=True)
                 if verbose: print('Read as FITS Numpy array...')
             except (IOError, KeyError):
-                try: # Try ascii
+                try:  # Try ascii
                     spectrum = ii.read(downloaded_file)
                     spectrum = np.array([np.asarray(spectrum.columns[n]) for n in range(len(spectrum.columns))])
                     if verbose: print('Read as ascii...')
