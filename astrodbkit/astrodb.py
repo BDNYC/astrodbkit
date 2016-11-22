@@ -732,21 +732,13 @@ class Database:
         else:
             bibcode = self.query("SELECT {} FROM {} WHERE shortname='{}'".format(bibcode_name, table, id),
                                  fetch='one')
-        #     id = shortname
-        # elif id and not isinstance(id, type(1)) and not shortname:
-        #     bibcode = self.query("SELECT {} FROM {} WHERE shortname='{}'".format(bibcode_name, table, id),
-        #                          fetch='one')
-        #     id = shortname
-        # else:
-        #     print('Must provide either an id or shortname to search')
-        #     return
 
         # Check for empty bibcodes
         if isinstance(bibcode, type(None)):
             print('No bibcode for {}'.format(id))
             return
         bibcode = bibcode[0]
-        if bibcode=='':
+        if bibcode == '':
             print('No bibcode for {}'.format(id))
             return
 
