@@ -1950,7 +1950,7 @@ def convert_spectrum(File, verbose=False):
 
                 # Check to see if it's a FIRE spectrum with CDELT1, if so needs wlog=True
                 if 'INSTRUME' in header.keys():
-                    if header['INSTRUME'] == 'FIRE' and 'CDELT1' in header.keys():
+                    if header['INSTRUME'].strip() == 'FIRE' and 'CDELT1' in header.keys():
                         tempwav = __create_waxis(header, len(spectrum[1]), File, wlog=True)
 
                 spectrum[0] = tempwav
