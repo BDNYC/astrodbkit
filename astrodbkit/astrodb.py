@@ -809,7 +809,7 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
                                 "SELECT {} FROM {} WHERE {}={}".format(','.join(columns), table, id, source_id), \
                                 fetch=True, fmt=fmt)
                         else:
-                            data = data[list(columns)]
+                            data = data[[c.lower() for c in columns]]
                             pprint(data, title=table.upper())
 
                 else:
@@ -1377,7 +1377,7 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
                         "SELECT {} FROM {} WHERE {}='{}'".format(
                             ','.join(columns), table, column_name, criteria), fmt='table', fetch=True)
                 else:
-                    data = data[list(columns)]
+                    data = data[[c.lower() for c in columns]]  # force lowercase since astropy.Tables have all lowercase
                     pprint(data, title=table.upper())
 
         if fetch: return data_tables
