@@ -154,6 +154,12 @@ def test_references():
     bdnyc_db.references(id, column_name='publication_id')
 
 
+@pytest.mark.xfail
+def test_get_bibtex():
+    bdnyc_db.get_bibtex(52)
+    bdnyc_db.get_bibtex('Cruz03')
+
+
 def test_save():
     empty_db.save(directory='tempempty')
     bdnyc_db.save(directory='tempdata')
