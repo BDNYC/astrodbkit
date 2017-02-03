@@ -1213,6 +1213,7 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
             True or (min,max) wavelength range in which to normalize the spectrum
 
         """
+        # TODO: Look into axes number formats. As is it will sometimes not display any numbers for wavelength
 
         i = self.query("SELECT * FROM {} WHERE id={}".format(table, spectrum_id), fetch='one', fmt='dict')
         if i:
