@@ -2,3 +2,4 @@ numpy
 astropy
 matplotlib
 pandas
+requests
