@@ -1525,7 +1525,7 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
         except ValueError:
             print('Table {} not found'.format(table))
 
-    def search(self, criterion, table, columns='', fetch=False, radius=1/60., use_converters=False):
+    def search(self, criterion, table, columns='', fetch=False, radius=1/60., use_converters=False, sql_search=False):
         """
         General search method for tables. For (ra,dec) input in decimal degrees,
         i.e. (12.3456,-65.4321), returns all sources within 1 arcminute, or the specified radius.
@@ -1547,6 +1547,9 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
             Radius in degrees in which to search for objects if using (ra,dec). Default: 1/60 degree
         use_converters: bool
             Apply converters to columns with custom data types
+        sql_search: bool
+            Perform the search by coordinates in a box defined within the SQL commands, rather than with true angular
+            separations. Faster, but not a true radial search.
         """
 
         # Get list of columns to search and format properly
@@ -1574,18 +1577,26 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
 
         if isinstance(criterion, (tuple, list, np.ndarray)):
             try:
-                t = self.query('SELECT id,ra,dec FROM sources', fmt='table')
-                df = t.to_pandas()
-                df[['ra', 'dec']] = df[['ra', 'dec']].apply(pd.to_numeric)  # convert everything to floats
-                mask = df['ra'].isnull()
-                df = df[~mask]
+                if sql_search:
+                    q = "SELECT * FROM {} WHERE ra BETWEEN ".format(table) \
+                        + str(criterion[0] - radius) + " AND " \
+                        + str(criterion[0] + radius) + " AND dec BETWEEN " \
+                        + str(criterion[1] - radius) + " AND " \
+                        + str(criterion[1] + radius)
+                    results = self.query(q, fmt='table')
+                else:
+                    t = self.query('SELECT id,ra,dec FROM sources', fmt='table')
+                    df = t.to_pandas()
+                    df[['ra', 'dec']] = df[['ra', 'dec']].apply(pd.to_numeric)  # convert everything to floats
+                    mask = df['ra'].isnull()
+                    df = df[~mask]
 
-                df['theta'] = df.apply(ang_sep, axis=1, args=(criterion[0], criterion[1]))
-                good = df['theta'] <= radius
+                    df['theta'] = df.apply(ang_sep, axis=1, args=(criterion[0], criterion[1]))
+                    good = df['theta'] <= radius
 
-                if sum(good) > 0:
-                    params = ", ".join(['{}'.format(s) for s in df[good]['id'].tolist()])
-                    results = self.query('SELECT * FROM sources WHERE id IN ({})'.format(params), fmt='table')
+                    if sum(good) > 0:
+                        params = ", ".join(['{}'.format(s) for s in df[good]['id'].tolist()])
+                        results = self.query('SELECT * FROM sources WHERE id IN ({})'.format(params), fmt='table')
             except:
                 print("Could not search {} table by coordinates {}. Try again.".format(table.upper(), criterion))
 

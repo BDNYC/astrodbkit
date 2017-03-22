@@ -32,6 +32,7 @@ def test_search():
     bdnyc_db.search('young', 'sources')
     bdnyc_db.search((222.106, 10.533), 'sources')
     bdnyc_db.search((338.673, 40.694), 'sources', radius=5)
+    bdnyc_db.search((338.673, 40.694), 'sources', radius=5, sql_search=True)
 
 
 def test_inventory():
