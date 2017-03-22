@@ -1525,7 +1525,7 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
         except ValueError:
             print('Table {} not found'.format(table))
 
-    def search(self, criterion, table, columns='', fetch=False, radius=1/60.):
+    def search(self, criterion, table, columns='', fetch=False, radius=1/60., use_converters=False):
         """
         General search method for tables. For (ra,dec) input in decimal degrees,
         i.e. (12.3456,-65.4321), returns all sources within 1 arcminute, or the specified radius.
@@ -1545,7 +1545,8 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
             Return the results of the query as an Astropy table
         radius: float
             Radius in degrees in which to search for objects if using (ra,dec). Default: 1/60 degree
-
+        use_converters: bool
+            Apply converters to columns with custom data types
         """
 
         # Get list of columns to search and format properly
@@ -1613,7 +1614,7 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
                 q = "SELECT * FROM {} WHERE {}".format(table, ' OR '.join([r"REPLACE(" + c + r",' ','') like '%" \
                      + criterion.replace(' ', '') + r"%'" for c, t in zip(columns,types[np.in1d(columns, all_columns)]) \
                      if t == 'TEXT']))
-                results = self.query(q, fmt='table')
+                results = self.query(q, fmt='table', use_converters=use_converters)
             except:
                 print("Could not search {} table by string {}. Try again.".format(table.upper(), criterion))
 
@@ -1622,7 +1623,7 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
             try:
                 q = "SELECT * FROM {} WHERE {}".format(table, ' OR '.join(['{}={}'.format(c, criterion) \
                      for c, t in zip(columns, types[np.in1d(columns, all_columns)]) if t == 'INTEGER']))
-                results = self.query(q, fmt='table')
+                results = self.query(q, fmt='table', use_converters=use_converters)
             except:
                 print("Could not search {} table by id {}. Try again.".format(table.upper(), criterion))
 
