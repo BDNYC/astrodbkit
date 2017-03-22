@@ -964,7 +964,7 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
 
     def merge(self, conflicted, tables=[], diff_only=True):
         """
-        Merges specific **tables** or all tables of **conflicted** databse into the master database.
+        Merges specific **tables** or all tables of **conflicted** database into the master database.
 
         Parameters
         ----------
@@ -1035,7 +1035,7 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
 
                     if data:
 
-                        # Just print(the table differences
+                        # Just print the table differences
                         if diff_only:
                             pprint(zip(*data)[1:], names=columns, title='New {} records'.format(table.upper()))
 
@@ -2172,7 +2172,7 @@ def pprint(data, names='', title='', formats={}):
     Parameters
     ----------
     data: (sequence, dict, table)
-        The data to print(in the table
+        The data to print in the table
     names: sequence
         The column names
     title: str (optional)
