@@ -93,6 +93,16 @@ class Database:
                 # First the schema...
                 os.system("sqlite3 {} < {}".format(self.dbpath, self.sqlpath))
 
+                # Prepare to deactivate the INSERT triggers (assumes these triggers are named with _insert)
+                trigger_names = os.popen(
+                    """echo "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE '%insert%';" | sqlite3 {}"""
+                        .format(self.dbpath)).read().replace('\n', ' ').split()
+                trigger_sql = os.popen(
+                    """echo "SELECT sql FROM sqlite_master WHERE type='trigger' AND name LIKE '%insert%';" | sqlite3 {}"""
+                        .format(self.dbpath)).read()
+                for trigger_name in trigger_names:
+                    os.system("""echo "DROP TRIGGER {};" | sqlite3 {}""".format(trigger_name, self.dbpath))
+
                 # Then load the table data...
                 print('Populating database...')
                 # Grabbing only tables, not tables and views
@@ -102,6 +112,13 @@ class Database:
                 for table in tables:
                     print('Loading {}'.format(table))
                     os.system('sqlite3 {0} ".read {1}/{2}.sql"'.format(self.dbpath, directory, table))
+
+                # Reactivate the INSERT triggers
+                for new_trigger in trigger_sql.split('END'):
+                    if new_trigger == '\n': continue
+                    # print(new_trigger + 'END;')
+                    os.system("""echo "{}" | sqlite3 {}""".format(new_trigger + 'END;', self.dbpath))
+
             elif dbpath.endswith('.db'):
                 self.sqlpath = dbpath.replace('.db', '.sql')
                 self.dbpath = dbpath
