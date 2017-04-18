@@ -95,7 +95,10 @@ class Database:
 
                 # Then load the table data...
                 print('Populating database...')
-                tables = os.popen('sqlite3 {} ".tables"'.format(self.dbpath)).read().replace('\n',' ').split()
+                # Grabbing only tables, not tables and views
+                # tables = os.popen('sqlite3 {} ".tables"'.format(self.dbpath)).read().replace('\n',' ').split()
+                tables = os.popen("""echo "SELECT name FROM sqlite_master WHERE type='table';" | sqlite3 {}"""
+                                  .format(self.dbpath)).read().replace('\n',' ').split()
                 for table in tables:
                     print('Loading {}'.format(table))
                     os.system('sqlite3 {0} ".read {1}/{2}.sql"'.format(self.dbpath, directory, table))
@@ -1314,10 +1317,14 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
             if SQL.lower().startswith('select') or SQL.lower().startswith('pragma'):
 
                 # Make the query explicit so that column and table names are preserved
-                SQL, columns = self._explicit_query(SQL, use_converters=use_converters)
-
-                # Get the data as a dictionary
-                dictionary = self.dict(SQL, params).fetchall()
+                # Then, get the data as a dictionary
+                origSQL = SQL
+                try:
+                    SQL, columns = self._explicit_query(SQL, use_converters=use_converters)
+                    dictionary = self.dict(SQL, params).fetchall()
+                except:
+                    print('WARNING: Unable to use converters')
+                    dictionary = self.dict(origSQL, params).fetchall()
 
                 if any(dictionary):
 
