@@ -93,12 +93,12 @@ class Database:
                 # First the schema...
                 os.system("sqlite3 {} < {}".format(self.dbpath, self.sqlpath))
 
-                # Prepare to deactivate the INSERT triggers (assumes these triggers are named with _insert)
+                # Prepare to deactivate the triggers (all, just in case)
                 trigger_names = os.popen(
-                    """echo "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE '%insert%';" | sqlite3 {}"""
+                    """echo "SELECT name FROM sqlite_master WHERE type='trigger';" | sqlite3 {}"""
                         .format(self.dbpath)).read().replace('\n', ' ').split()
                 trigger_sql = os.popen(
-                    """echo "SELECT sql FROM sqlite_master WHERE type='trigger' AND name LIKE '%insert%';" | sqlite3 {}"""
+                    """echo "SELECT sql FROM sqlite_master WHERE type='trigger';" | sqlite3 {}"""
                         .format(self.dbpath)).read()
                 if len(trigger_names) > 0:
                     for trigger_name in trigger_names:
@@ -114,7 +114,7 @@ class Database:
                     print('Loading {}'.format(table))
                     os.system('sqlite3 {0} ".read {1}/{2}.sql"'.format(self.dbpath, directory, table))
 
-                # Reactivate the INSERT triggers
+                # Reactivate the triggers
                 if len(trigger_sql) > 0:
                     for new_trigger in trigger_sql.split('END'):
                         if new_trigger == '\n': continue
