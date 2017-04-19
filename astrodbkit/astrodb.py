@@ -93,12 +93,34 @@ class Database:
                 # First the schema...
                 os.system("sqlite3 {} < {}".format(self.dbpath, self.sqlpath))
 
+                # Prepare to deactivate the triggers (all, just in case)
+                trigger_names = os.popen(
+                    """echo "SELECT name FROM sqlite_master WHERE type='trigger';" | sqlite3 {}"""
+                        .format(self.dbpath)).read().replace('\n', ' ').split()
+                trigger_sql = os.popen(
+                    """echo "SELECT sql FROM sqlite_master WHERE type='trigger';" | sqlite3 {}"""
+                        .format(self.dbpath)).read()
+                if len(trigger_names) > 0:
+                    for trigger_name in trigger_names:
+                        os.system("""echo "DROP TRIGGER {};" | sqlite3 {}""".format(trigger_name, self.dbpath))
+
                 # Then load the table data...
                 print('Populating database...')
-                tables = os.popen('sqlite3 {} ".tables"'.format(self.dbpath)).read().replace('\n',' ').split()
+                # Grabbing only tables, not tables and views
+                # tables = os.popen('sqlite3 {} ".tables"'.format(self.dbpath)).read().replace('\n',' ').split()
+                tables = os.popen("""echo "SELECT name FROM sqlite_master WHERE type='table';" | sqlite3 {}"""
+                                  .format(self.dbpath)).read().replace('\n',' ').split()
                 for table in tables:
                     print('Loading {}'.format(table))
                     os.system('sqlite3 {0} ".read {1}/{2}.sql"'.format(self.dbpath, directory, table))
+
+                # Reactivate the triggers
+                if len(trigger_sql) > 0:
+                    for new_trigger in trigger_sql.split('END'):
+                        if new_trigger == '\n': continue
+                        # print(new_trigger + 'END;')
+                        os.system("""echo "{}" | sqlite3 {}""".format(new_trigger + 'END;', self.dbpath))
+
             elif dbpath.endswith('.db'):
                 self.sqlpath = dbpath.replace('.db', '.sql')
                 self.dbpath = dbpath
@@ -964,7 +986,7 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
 
     def merge(self, conflicted, tables=[], diff_only=True):
         """
-        Merges specific **tables** or all tables of **conflicted** databse into the master database.
+        Merges specific **tables** or all tables of **conflicted** database into the master database.
 
         Parameters
         ----------
@@ -1035,7 +1057,7 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
 
                     if data:
 
-                        # Just print(the table differences
+                        # Just print the table differences
                         if diff_only:
                             pprint(zip(*data)[1:], names=columns, title='New {} records'.format(table.upper()))
 
@@ -1314,10 +1336,14 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
             if SQL.lower().startswith('select') or SQL.lower().startswith('pragma'):
 
                 # Make the query explicit so that column and table names are preserved
-                SQL, columns = self._explicit_query(SQL, use_converters=use_converters)
-
-                # Get the data as a dictionary
-                dictionary = self.dict(SQL, params).fetchall()
+                # Then, get the data as a dictionary
+                origSQL = SQL
+                try:
+                    SQL, columns = self._explicit_query(SQL, use_converters=use_converters)
+                    dictionary = self.dict(SQL, params).fetchall()
+                except:
+                    print('WARNING: Unable to use converters')
+                    dictionary = self.dict(origSQL, params).fetchall()
 
                 if any(dictionary):
 
@@ -1525,7 +1551,7 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
         except ValueError:
             print('Table {} not found'.format(table))
 
-    def search(self, criterion, table, columns='', fetch=False, radius=1/60.):
+    def search(self, criterion, table, columns='', fetch=False, radius=1/60., use_converters=False, sql_search=False):
         """
         General search method for tables. For (ra,dec) input in decimal degrees,
         i.e. (12.3456,-65.4321), returns all sources within 1 arcminute, or the specified radius.
@@ -1545,7 +1571,11 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
             Return the results of the query as an Astropy table
         radius: float
             Radius in degrees in which to search for objects if using (ra,dec). Default: 1/60 degree
-
+        use_converters: bool
+            Apply converters to columns with custom data types
+        sql_search: bool
+            Perform the search by coordinates in a box defined within the SQL commands, rather than with true angular
+            separations. Faster, but not a true radial search.
         """
 
         # Get list of columns to search and format properly
@@ -1573,37 +1603,31 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
 
         if isinstance(criterion, (tuple, list, np.ndarray)):
             try:
-                t = self.query('SELECT id,ra,dec FROM sources', fmt='table')
-                df = t.to_pandas()
-                df[['ra', 'dec']] = df[['ra', 'dec']].apply(pd.to_numeric)  # convert everything to floats
-                mask = df['ra'].isnull()
-                df = df[~mask]
+                if sql_search:
+                    q = "SELECT * FROM {} WHERE ra BETWEEN ".format(table) \
+                        + str(criterion[0] - radius) + " AND " \
+                        + str(criterion[0] + radius) + " AND dec BETWEEN " \
+                        + str(criterion[1] - radius) + " AND " \
+                        + str(criterion[1] + radius)
+                    results = self.query(q, fmt='table')
+                else:
+                    t = self.query('SELECT id,ra,dec FROM sources', fmt='table')
+                    df = t.to_pandas()
+                    df[['ra', 'dec']] = df[['ra', 'dec']].apply(pd.to_numeric)  # convert everything to floats
+                    mask = df['ra'].isnull()
+                    df = df[~mask]
 
-                def ang_sep(row, ra1, dec1):
-                    # Using Vicenty Formula (http://en.wikipedia.org/wiki/Great-circle_distance)
-                    # and adapting from astropy's SkyCoord
+                    df['theta'] = df.apply(ang_sep, axis=1, args=(criterion[0], criterion[1]))
+                    good = df['theta'] <= radius
 
-                    factor = math.pi / 180
-                    sdlon = math.sin((row['ra'] - ra1) * factor)  # RA is longitude
-                    cdlon = math.cos((row['ra'] - ra1) * factor)
-                    slat1 = math.sin(dec1 * factor)  # Dec is latitude
-                    slat2 = math.sin(row['dec'] * factor)
-                    clat1 = math.cos(dec1 * factor)
-                    clat2 = math.cos(row['dec'] * factor)
-
-                    num1 = clat2 * sdlon
-                    num2 = clat1 * slat2 - slat1 * clat2 * cdlon
-                    numerator = math.sqrt(num1 ** 2 + num2 ** 2)
-                    denominator = slat1 * slat2 + clat1 * clat2 * cdlon
-
-                    return np.arctan2(numerator, denominator) / factor
-
-                df['theta'] = df.apply(ang_sep, axis=1, args=(criterion[0], criterion[1]))
-                good = df['theta'] <= radius
-
-                if sum(good) > 0:
-                    params = ", ".join(['{}'.format(s) for s in df[good]['id'].tolist()])
-                    results = self.query('SELECT * FROM sources WHERE id IN ({})'.format(params), fmt='table')
+                    if sum(good) > 0:
+                        params = ", ".join(['{}'.format(s) for s in df[good]['id'].tolist()])
+                        try:
+                            results = self.query('SELECT * FROM {} WHERE source_id IN ({})'.format(table, params),
+                                                 fmt='table')
+                        except:
+                            results = self.query('SELECT * FROM {} WHERE id IN ({})'.format(table, params),
+                                                 fmt='table')
             except:
                 print("Could not search {} table by coordinates {}. Try again.".format(table.upper(), criterion))
 
@@ -1613,7 +1637,7 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
                 q = "SELECT * FROM {} WHERE {}".format(table, ' OR '.join([r"REPLACE(" + c + r",' ','') like '%" \
                      + criterion.replace(' ', '') + r"%'" for c, t in zip(columns,types[np.in1d(columns, all_columns)]) \
                      if t == 'TEXT']))
-                results = self.query(q, fmt='table')
+                results = self.query(q, fmt='table', use_converters=use_converters)
             except:
                 print("Could not search {} table by string {}. Try again.".format(table.upper(), criterion))
 
@@ -1622,7 +1646,7 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
             try:
                 q = "SELECT * FROM {} WHERE {}".format(table, ' OR '.join(['{}={}'.format(c, criterion) \
                      for c, t in zip(columns, types[np.in1d(columns, all_columns)]) if t == 'INTEGER']))
-                results = self.query(q, fmt='table')
+                results = self.query(q, fmt='table', use_converters=use_converters)
             except:
                 print("Could not search {} table by id {}. Try again.".format(table.upper(), criterion))
 
@@ -1870,6 +1894,42 @@ def adapt_array(arr):
     out = io.BytesIO()
     np.save(out, arr), out.seek(0)
     return buffer(out.read())  # TODO: Fix for Python 3
+
+
+def ang_sep(row, ra1, dec1):
+    """
+    Calculate angular separation between two coordinates
+    Uses Vicenty Formula (http://en.wikipedia.org/wiki/Great-circle_distance) and adapts from astropy's SkyCoord
+    Written to be used within the Database.search() method
+
+    Parameters
+    ----------
+    row: dict, pandas Row
+        Coordinate structure containing ra and dec keys in decimal degrees
+    ra1: float
+        RA to compare with, in decimal degrees
+    dec1: float
+        Dec to compare with, in decimal degrees
+
+    Returns
+    -------
+        Angular distance, in degrees, between the coordinates
+    """
+
+    factor = math.pi / 180
+    sdlon = math.sin((row['ra'] - ra1) * factor)  # RA is longitude
+    cdlon = math.cos((row['ra'] - ra1) * factor)
+    slat1 = math.sin(dec1 * factor)  # Dec is latitude
+    slat2 = math.sin(row['dec'] * factor)
+    clat1 = math.cos(dec1 * factor)
+    clat2 = math.cos(row['dec'] * factor)
+
+    num1 = clat2 * sdlon
+    num2 = clat1 * slat2 - slat1 * clat2 * cdlon
+    numerator = math.sqrt(num1 ** 2 + num2 ** 2)
+    denominator = slat1 * slat2 + clat1 * clat2 * cdlon
+
+    return np.arctan2(numerator, denominator) / factor
 
 
 def convert_array(array):
@@ -2143,7 +2203,7 @@ def pprint(data, names='', title='', formats={}):
     Parameters
     ----------
     data: (sequence, dict, table)
-        The data to print(in the table
+        The data to print in the table
     names: sequence
         The column names
     title: str (optional)

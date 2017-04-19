@@ -4,6 +4,7 @@ python:
     - 2.7
     - 3.4
     - 3.5
+    - 3.6
 
 before_script:
   - "export DISPLAY=:99.0" # xvfb is used to ensure matplotlib plots don't fail
@@ -27,13 +28,14 @@ env:
         # Try all python versions with the latest numpy
         - SETUP_CMD='py.test'
 
-#matrix:
-#    allow_failures:
-#        - python: 3.3
+matrix:
+    allow_failures:
+        - python: 3.4
 
 install:
     - git clone git://github.com/astropy/ci-helpers.git
     - source ci-helpers/travis/setup_conda_$TRAVIS_OS_NAME.sh
+    - pip install requests
 
 script:
     - $SETUP_CMD
