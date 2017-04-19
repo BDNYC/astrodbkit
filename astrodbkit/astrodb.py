@@ -1622,7 +1622,12 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
 
                     if sum(good) > 0:
                         params = ", ".join(['{}'.format(s) for s in df[good]['id'].tolist()])
-                        results = self.query('SELECT * FROM sources WHERE id IN ({})'.format(params), fmt='table')
+                        try:
+                            results = self.query('SELECT * FROM {} WHERE source_id IN ({})'.format(table, params),
+                                                 fmt='table')
+                        except:
+                            results = self.query('SELECT * FROM {} WHERE id IN ({})'.format(table, params),
+                                                 fmt='table')
             except:
                 print("Could not search {} table by coordinates {}. Try again.".format(table.upper(), criterion))
 
