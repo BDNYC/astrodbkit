@@ -8,42 +8,6 @@ from astropy.table import Table, Column
 from astropy.io.votable import from_table
 
 
-def table_add(tab, data, col):
-    """
-    Function to parse dictionary list **data** and add the data to table **tab** for column **col**
-
-    Parameters
-    ----------
-    tab: Table class
-      Table to store values
-    data: list
-      Dictionary list from the SQL query
-    col: str
-      Column name (ie, dictionary key) for the column to add
-
-    Returns
-    -------
-    None
-
-    """
-
-    x = []
-    for i in range(len(data)):
-
-        # If the particular key is not present, use a place-holder value (used for photometry tables)
-        if col not in data[i]:
-            temp = ''
-        else:
-            temp = data[i][col]
-
-        # Fix up None elements
-        if temp is None: temp = ''
-
-        x.append(temp)
-
-    print('Adding column {}'.format(col))
-    tab.add_column(Column(x, name=col))
-
 def dict_tovot(tabdata, tabname='votable.xml', phot=False, binary=True):
     """
     Converts dictionary table **tabdata** to a VOTable with name **tabname**
@@ -59,10 +23,6 @@ def dict_tovot(tabdata, tabname='votable.xml', phot=False, binary=True):
     binary: bool
       Parameter specifying if the VOTable should be saved as a binary.
       This is necessary for tables with lots of text columns.
-
-    Returns
-    -------
-    None
 
     """
 
@@ -123,7 +83,9 @@ def photaddline(tab, sourceid):
 
     Returns
     -------
-      Dictionary with all the data for the specified source
+    tmpdict: dict
+        Dictionary with all the data for the specified source
+
     """
 
     colnames = tab[0].keys()
@@ -183,3 +145,36 @@ def photparse(tab):
         newtab.append(tmpdict)
 
     return newtab
+
+
+def table_add(tab, data, col):
+    """
+    Function to parse dictionary list **data** and add the data to table **tab** for column **col**
+
+    Parameters
+    ----------
+    tab: Table class
+      Table to store values
+    data: list
+      Dictionary list from the SQL query
+    col: str
+      Column name (ie, dictionary key) for the column to add
+
+    """
+
+    x = []
+    for i in range(len(data)):
+
+        # If the particular key is not present, use a place-holder value (used for photometry tables)
+        if col not in data[i]:
+            temp = ''
+        else:
+            temp = data[i][col]
+
+        # Fix up None elements
+        if temp is None: temp = ''
+
+        x.append(temp)
+
+    print('Adding column {}'.format(col))
+    tab.add_column(Column(x, name=col))
