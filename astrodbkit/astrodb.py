@@ -938,7 +938,7 @@ class Database:
         export: str
             The file path of the ascii file to which the data should be exported
         verbose: bool
-            print(the data also
+            print the data also
         use_converters: bool
             Apply converters to columns with custom data types
 
