@@ -15,6 +15,7 @@ import warnings
 import math
 import pandas as pd
 import numpy as np
+import datetime
 import matplotlib.pyplot as plt
 import astropy.io.fits as pf
 import astropy.io.ascii as ii
@@ -62,7 +63,7 @@ class Database:
         ----------
         dbpath: str
             The path to the .db or .sql database file.
-        directory: str
+        directory: str (optional)
             Folder in which individual tables are stored (Default: tabledata)
 
         Returns
@@ -84,7 +85,6 @@ class Database:
 
                 # If the .db file already exists, rename it with the date
                 if os.path.isfile(self.dbpath):
-                    import datetime
                     date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")
                     print("Renaming existing file {} to {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
                     os.system("mv {} {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
@@ -202,26 +202,26 @@ class Database:
 
     def add_data(self, data, table, delimiter='|', bands='', verbose=False):
         """
-    Adds data to the specified database table. Column names must match table fields to insert,
-    however order and completeness don't matter.
+        Adds data to the specified database table. Column names must match table fields to insert,
+        however order and completeness don't matter.
 
-    Parameters
-    ----------
-    data: str, sequence
-      The path to an ascii file or a list of lists. The first row or element must
-      be the list of column names
-    table: str
-      The name of the table into which the data should be inserted
-    delimiter: str
-      The string to use as the delimiter when parsing the ascii file
-    bands: sequence
-      Sequence of band to look for in the data header when digesting columns of
-      multiple photometric measurements (e.g. ['MKO_J','MKO_H','MKO_K']) into individual
-      rows of data for database insertion
-    verbose: bool
-      Print diagnostic messages
+        Parameters
+        ----------
+        data: str, sequence
+          The path to an ascii file or a list of lists. The first row or element must
+          be the list of column names
+        table: str
+          The name of the table into which the data should be inserted
+        delimiter: str
+          The string to use as the delimiter when parsing the ascii file
+        bands: sequence
+          Sequence of band to look for in the data header when digesting columns of
+          multiple photometric measurements (e.g. ['MKO_J','MKO_H','MKO_K']) into individual
+          rows of data for database insertion
+        verbose: bool
+          Print diagnostic messages
 
-    """
+        """
         # Store raw entry
         entry, del_records = data, []
 
@@ -1469,12 +1469,7 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
 
     def save(self, directory='tabledata'):
         """
-        Dump the entire contents of the database into a folder **directory** as ascii files
-
-        Parameters
-        ==========
-        directory: str
-            Directory name to store individual table data
+        Dump the entire contents of the database into the tabledata directory as ascii files
         """
         from subprocess import call
 
