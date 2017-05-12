@@ -77,15 +77,18 @@ class Database:
             # Alternatively, just list the directory with the schema and .sql files and require that dbpath
             # is the schema file, then load the tables individually
 
+            # Save the directory to the tabledata as an attribute
+            self.directory = directory or os.path.join(os.path.dirname(self.dbpath), 'tabledata')
+
             # If it is a .sql file, create an empty database in the
             # working directory and generate the database from file
             if dbpath.endswith('.sql'):
                 self.sqlpath = dbpath
                 self.dbpath = dbpath.replace('.sql', '.db')
 
-                # If the .db file already exists, rename it with the date
+                # If the .db file already exists, rename it
                 if os.path.isfile(self.dbpath):
-                    date = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")
+                    date = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
                     print("Renaming existing file {} to {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
                     os.system("mv {} {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
 
@@ -112,7 +115,8 @@ class Database:
                                   .format(self.dbpath)).read().replace('\n',' ').split()
                 for table in tables:
                     print('Loading {}'.format(table))
-                    os.system('sqlite3 {0} ".read {1}/{2}.sql"'.format(self.dbpath, directory, table))
+                    os.system('sqlite3 {0} ".read {1}.sql"'.format(self.dbpath,
+                                                                       os.path.join(self.directory, table)))
 
                 # Reactivate the triggers
                 if len(trigger_sql) > 0:
@@ -515,7 +519,7 @@ class Database:
             print('\nFinished clean up on {} table.'.format(table.upper()))
 
     # @property
-    def close(self, silent=False, directory='tabledata'):
+    def close(self, silent=False):
         """
         Close the database and ask to save and delete the file
 
@@ -526,7 +530,7 @@ class Database:
         """
         if not silent:
             saveme = get_input("Save database contents to '{}/'? (y, [n]) \n"
-                               "To save under a folder name, run db.save() before closing. ".format(directory))
+                               "To save elsewhere, run db.save() before closing. ".format(self.directory))
             if saveme.lower() == 'y':
                 self.save()
 
@@ -1467,11 +1471,15 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
 
         if fetch: return data_tables
 
-    def save(self, directory='tabledata'):
+    def save(self, directory=None):
         """
         Dump the entire contents of the database into the tabledata directory as ascii files
         """
         from subprocess import call
+
+        # If user did not supply a new directory, use the one loaded (default: tabledata)
+        if isinstance(directory, type(None)):
+            directory = self.directory
 
         # Create the .sql file is it doesn't exist, i.e. if the Database class called a .db file initially
         if not os.path.isfile(self.sqlpath):
