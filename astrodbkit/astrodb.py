@@ -55,7 +55,7 @@ def create_database(dbpath):
 
 
 class Database:
-    def __init__(self, dbpath, directory='tabledata'):
+    def __init__(self, dbpath, directory=''):
         """
         Initialize the database.
 
@@ -78,7 +78,7 @@ class Database:
             # is the schema file, then load the tables individually
 
             # Save the directory to the tabledata as an attribute
-            self.directory = directory or os.path.join(os.path.dirname(self.dbpath), 'tabledata')
+            self.directory = directory or os.path.join(os.path.dirname(dbpath), 'tabledata')
 
             # If it is a .sql file, create an empty database in the
             # working directory and generate the database from file
