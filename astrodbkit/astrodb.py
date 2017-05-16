@@ -55,7 +55,7 @@ def create_database(dbpath):
 
 
 class Database:
-    def __init__(self, dbpath, directory=''):
+    def __init__(self, dbpath, directory='tabledata'):
         """
         Initialize the database.
 
@@ -77,60 +77,60 @@ class Database:
             # Alternatively, just list the directory with the schema and .sql files and require that dbpath
             # is the schema file, then load the tables individually
 
+            # Save the directory to the tabledata as an attribute
+            self.directory = directory or os.path.join(os.path.dirname(self.dbpath), 'tabledata')
+
             # If it is a .sql file, create an empty database in the
             # working directory and generate the database from file
             if dbpath.endswith('.sql'):
                 self.sqlpath = dbpath
                 self.dbpath = dbpath.replace('.sql', '.db')
-                
+
+                # If the .db file already exists, rename it
+                if os.path.isfile(self.dbpath):
+                    date = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+                    print("Renaming existing file {} to {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
+                    os.system("mv {} {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
+
+                # Make the new database from the .sql files
+                # First the schema...
+                os.system("sqlite3 {} < {}".format(self.dbpath, self.sqlpath))
+
+                # Prepare to deactivate the triggers (all, just in case)
+                trigger_names = os.popen(
+                    """echo "SELECT name FROM sqlite_master WHERE type='trigger';" | sqlite3 {}"""
+                        .format(self.dbpath)).read().replace('\n', ' ').split()
+                trigger_sql = os.popen(
+                    """echo "SELECT sql FROM sqlite_master WHERE type='trigger';" | sqlite3 {}"""
+                        .format(self.dbpath)).read()
+                if len(trigger_names) > 0:
+                    for trigger_name in trigger_names:
+                        os.system("""echo "DROP TRIGGER {};" | sqlite3 {}""".format(trigger_name, self.dbpath))
+
+                # Then load the table data...
+                print('Populating database...')
+                # Grabbing only tables, not tables and views
+                # tables = os.popen('sqlite3 {} ".tables"'.format(self.dbpath)).read().replace('\n',' ').split()
+                tables = os.popen("""echo "SELECT name FROM sqlite_master WHERE type='table';" | sqlite3 {}"""
+                                  .format(self.dbpath)).read().replace('\n',' ').split()
+                for table in tables:
+                    print('Loading {}'.format(table))
+                    os.system('sqlite3 {0} ".read {1}.sql"'.format(self.dbpath,
+                                                                       os.path.join(self.directory, table)))
+
+                # Reactivate the triggers
+                if len(trigger_sql) > 0:
+                    for new_trigger in trigger_sql.split('END'):
+                        if new_trigger == '\n': continue
+                        # print(new_trigger + 'END;')
+                        os.system("""echo "{}" | sqlite3 {}""".format(new_trigger + 'END;', self.dbpath))
+
             elif dbpath.endswith('.db'):
                 self.sqlpath = dbpath.replace('.db', '.sql')
                 self.dbpath = dbpath
             else:
                 self.sqlpath = dbpath + '.sql'
                 self.dbpath = dbpath
-            
-            # Save the directory to the tabledata as an attribute
-            self.directory = directory or os.path.join(os.path.dirname(self.dbpath), 'tabledata')
-
-            # If the .db file already exists, copy and rename it
-            if os.path.isfile(self.dbpath):
-                
-                date = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
-                print("Renaming existing file {} to {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
-                os.system("mv {} {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
-
-            # Make the new database from the .sql files
-            # First the schema...
-            os.system("sqlite3 {} < {}".format(self.dbpath, self.sqlpath))
-
-            # Prepare to deactivate the triggers (all, just in case)
-            trigger_names = os.popen(
-                """echo "SELECT name FROM sqlite_master WHERE type='trigger';" | sqlite3 {}"""
-                    .format(self.dbpath)).read().replace('\n', ' ').split()
-            trigger_sql = os.popen(
-                """echo "SELECT sql FROM sqlite_master WHERE type='trigger';" | sqlite3 {}"""
-                    .format(self.dbpath)).read()
-            if len(trigger_names) > 0:
-                for trigger_name in trigger_names:
-                    os.system("""echo "DROP TRIGGER {};" | sqlite3 {}""".format(trigger_name, self.dbpath))
-
-            # Then load the table data...
-            print('Populating database...')
-            # Grabbing only tables, not tables and views
-            # tables = os.popen('sqlite3 {} ".tables"'.format(self.dbpath)).read().replace('\n',' ').split()
-            tables = os.popen("""echo "SELECT name FROM sqlite_master WHERE type='table';" | sqlite3 {}"""
-                              .format(self.dbpath)).read().replace('\n',' ').split()
-            for table in tables:
-                print('Loading {}'.format(table))
-                os.system('sqlite3 {0} ".read {1}/{2}.sql"'.format(self.dbpath, self.directory, table))
-
-            # Reactivate the triggers
-            if len(trigger_sql) > 0:
-                for new_trigger in trigger_sql.split('END'):
-                    if new_trigger == '\n': continue
-                    # print(new_trigger + 'END;')
-                    os.system("""echo "{}" | sqlite3 {}""".format(new_trigger + 'END;', self.dbpath))
 
             # Create .sql schema file if it doesn't exist
             os.system('touch {}'.format(self.sqlpath.replace(' ', '\ ')))
@@ -530,7 +530,7 @@ class Database:
         """
         if not silent:
             saveme = get_input("Save database contents to '{}/'? (y, [n]) \n"
-                               "To save under a folder name, run db.save() before closing. ".format(self.directory))
+                               "To save elsewhere, run db.save() before closing. ".format(self.directory))
             if saveme.lower() == 'y':
                 self.save()
 
@@ -1518,11 +1518,15 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
 
         if fetch: return data_tables
 
-    def save(self):
+    def save(self, directory=None):
         """
-        Dump the entire contents of the database into the tabledata director as ascii files
+        Dump the entire contents of the database into the tabledata directory as ascii files
         """
         from subprocess import call
+
+        # If user did not supply a new directory, use the one loaded (default: tabledata)
+        if isinstance(directory, type(None)):
+            directory = self.directory
 
         # Create the .sql file is it doesn't exist, i.e. if the Database class called a .db file initially
         if not os.path.isfile(self.sqlpath):
@@ -1539,12 +1543,12 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
         os.system("echo '.output {}\n.schema' | sqlite3 {}".format(self.sqlpath, self.dbpath))
 
         # Write the table files to the tabledata directory
-        os.system("mkdir -p {}".format(self.directory))
+        os.system("mkdir -p {}".format(directory))
         tables = self.query("select tbl_name from sqlite_master where type='table'")['tbl_name']
         tablepaths = [self.sqlpath]
         for table in tables:
             print('Generating {}...'.format(table))
-            tablepath = '{0}/{1}.sql'.format(self.directory, table)
+            tablepath = '{0}/{1}.sql'.format(directory, table)
             tablepaths.append(tablepath)
             with open(tablepath, 'w') as f:
                 for line in self.conn.iterdump():
@@ -1555,7 +1559,7 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
                         else:
                             f.write(u'{}\n'.format(line))
 
-        print("Tables saved to directory {}/".format(self.directory))
+        print("Tables saved to directory {}/".format(directory))
         print("""=======================================================================================
 You can now run git to commit and push these changes, if needed.
 For example, if on the master branch you can do the following:
@@ -1564,7 +1568,7 @@ For example, if on the master branch you can do the following:
   git push origin master
 You can then issue a pull request on GitHub to have these changes reviewed and accepted
 ======================================================================================="""
-              .format(self.sqlpath, self.directory))
+              .format(self.sqlpath, directory))
 
         # Collect name and commit message from the user and push to Github
         # if git:
