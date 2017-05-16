@@ -1219,6 +1219,53 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
         else:
             print("Could not output spectrum: {}".format(spectrum))
 
+    def show_image(self, image_id, table='images', column='image', overplot=False, cmap='hot'):
+        """
+        Plots a spectrum from the given column and table
+
+        Parameters
+        ----------
+        image_id: int
+            The id from the table of the images to plot.
+        overplot: bool
+            Overplot the image
+        table: str
+            The table from which the plot is being made
+        column: str
+            The column with IMAGE data type to plot
+        cmap: str
+            The colormap used for the data
+        """
+        # TODO: Look into axes number formats. As is it will sometimes not display any numbers for wavelength
+
+        i = self.query("SELECT * FROM {} WHERE id={}".format(table, image_id), fetch='one', fmt='dict')
+        if i:
+            try:
+                img = i['image'].data
+                
+                # Draw the axes and add the metadata
+                if not overplot:
+                    fig, ax = plt.subplots()
+                    plt.rc('text', usetex=False)
+                    plt.figtext(0.15, 0.88, '\n'.join(['{}: {}'.format(k, v) for k, v in i.items() if k != column]), \
+                                verticalalignment='top')
+                    ax.legend(loc=8, frameon=False)
+                else:
+                    ax = plt.gca()
+                    
+                # Plot the data
+                ax.imshow(img, cmap=cmap)
+                X, Y = plt.xlim(), plt.ylim()
+                plt.ion()
+                
+            except IOError:
+                print("Could not plot image {}".format(image_id))
+                plt.close()
+                
+        else:
+            print("No image {} in the IMAGES table.".format(image_id))
+
+
     def plot_spectrum(self, spectrum_id, table='spectra', column='spectrum', overplot=False, color='b', norm=False):
         """
         Plots a spectrum from the given column and table
@@ -1813,6 +1860,50 @@ You can then issue a pull request on GitHub to have these changes reviewed and a
              types, and constraints are formatted properly.'.format(table.upper(), \
                                                                     'created' if new_table else 'modified'))
 
+class Image:
+    def __init__(self, data, header='', path=''):
+        """
+        Initialize the Image object
+
+        Parameters
+        ----------
+        data: sequence
+            The data cube
+        header: dictionary (optional)
+            A dictionary of data to include in the header
+        path: str (optional)
+            The absolute path to the original file
+
+        Returns
+        -------
+        object
+            The Spectrum object
+
+        """
+        self.data = data
+        self.path = path
+
+        if header and isinstance(header, dict):
+            new_header = pf.Header()
+            for k, v in header.items():
+                new_header[k.replace('.', '_').replace('#', '')] = v
+        elif isinstance(header, pf.header.Header):
+            new_header = header
+        elif isinstance(header, list):
+            new_header = pf.Header()
+            for line in header:
+                try:
+                    k, v = line.split('=')[0], '\\'.join(line.split('=')[1:])
+                    new_header[k.replace('\\', '').replace('.', '_').replace('#', '').strip()] = v
+                except:
+                    pass
+        elif header:
+            print('Header is {}. Must be a fits header, list, or dictionary.'.format(type(header)))
+            new_header = ''
+        else:
+            new_header = ''
+
+        self.header = new_header
 
 class Spectrum:
     def __init__(self, data, header='', path=''):
@@ -1950,6 +2041,85 @@ def convert_array(array):
     out.seek(0)
     return np.load(out)
 
+def convert_image(File, verbose=False):
+    """
+    Converts a IMAGE data type stored in the database into a data cube
+
+    Parameters
+    ----------
+    File: str
+        The URL or filepath of the file to be converted into arrays.
+    verbose: bool
+        Whether or not to display some diagnostic information (Default: False)
+
+    Returns
+    -------
+    sequence
+        The converted image
+
+    """
+    image, header = '', ''
+    if isinstance(File, type(b'')):  # Decode if needed (ie, for Python 3)
+        File = File.decode('utf-8')
+        
+    if isinstance(File, (str, type(u''))):
+        
+        # Convert variable path to absolute path
+        if File.startswith('$'):
+            abspath = os.popen('echo {}'.format(File.split('/')[0])).read()[:-1]
+            if abspath:
+                File = File.replace(File.split('/')[0], abspath)
+                
+        if File.startswith('http'):
+            if verbose:
+                print('Downloading {}'.format(File))
+            
+            # Download only once
+            downloaded_file = download_file(File, cache=True)
+        else:
+            downloaded_file = File
+            
+        try: 
+            # Get the data
+            image, header = pf.getdata(downloaded_file, cache=True, header=True)
+            
+            # If no data, then clear out all retrieved info for object
+            if not isinstance(image, np.ndarray):
+                image = None
+                
+            if verbose:
+                print('Read as FITS...')
+            
+        except (IOError, KeyError):
+            # Check if the FITS file is just Numpy arrays
+            try:
+                image, header = pf.getdata(downloaded_file, cache=True, header=True)
+                if verbose:
+                    print('Read as FITS Numpy array...')
+                    
+            except (IOError, KeyError):
+                try:  # Try ascii
+                    image = ii.read(downloaded_file)
+                    image = np.array([np.asarray(image.columns[n]) for n in range(len(image.columns))])
+                    if verbose:
+                        print('Read as ascii...')
+                        
+                    txt, header = open(downloaded_file), []
+                    for i in txt:
+                        if any([i.startswith(char) for char in ['#', '|', '\\']]):
+                            header.append(i.replace('\n', ''))
+                    txt.close()
+                    
+                except:
+                    pass
+                    
+    if image == '':
+        print('Could not retrieve image at {}.'.format(File))
+        return File
+        
+    else:
+        image = Image(image, header, File)
+        return image
 
 def convert_spectrum(File, verbose=False):
     """
@@ -2086,7 +2256,6 @@ def __create_waxis(fitsHeader, lenData, fileName, wlog=False, verb=True):
 
     return wAxis
 
-
 def __get_spec(fitsData, fitsHeader, fileName, verb=True):
     validData = [None] * 3
 
@@ -2193,6 +2362,7 @@ sqlite3.register_adapter(np.ndarray, adapt_array)
 # Register the converters
 sqlite3.register_converter(str("ARRAY"), convert_array)
 sqlite3.register_converter(str("SPECTRUM"), convert_spectrum)
+sqlite3.register_converter(str("IMAGE"), convert_image)
 
 
 def pprint(data, names='', title='', formats={}):
@@ -2410,4 +2580,5 @@ def _autofill_spec_record(record):
 
 
 type_dict = {'INTEGER': np.dtype('int64'), 'REAL': np.dtype('float64'), 'TEXT': np.dtype('object'),
-             'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('object'), 'BOOLEAN': np.dtype('bool')}
+             'ARRAY': np.dtype('object'), 'SPECTRUM': np.dtype('object'), 'BOOLEAN': np.dtype('bool'),
+             'IMAGE': np.dtype('object')}
