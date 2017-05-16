@@ -1263,7 +1263,7 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
                 plt.close()
                 
         else:
-            print("No image {} in the IMAGES table.".format(image_id))
+            print("No image {} in the {} table.".format(image_id, table.upper()))
 
 
     def plot_spectrum(self, spectrum_id, table='spectra', column='spectrum', overplot=False, color='b', norm=False):
@@ -1345,7 +1345,7 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
                 plt.close()
 
         else:
-            print("No spectrum {} in the SPECTRA table.".format(spectrum_id))
+            print("No spectrum {} in the {} table.".format(spectrum_id, table.upper()))
 
     def query(self, SQL, params='', fmt='array', fetch='all', unpack=False, export='', \
               verbose=False, use_converters=True):
