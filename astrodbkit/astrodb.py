@@ -867,9 +867,10 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
 
                 if table == 'sources' or 'source_id' in columns:
 
-                    # Only get simple data types and exclude redundant 'source_id' for nicer printing
-                    columns = columns[
-                        ((types == 'REAL') | (types == 'INTEGER') | (types == 'TEXT')) & (columns != 'source_id')]
+                    # If printing, only get simple data types and exclude redundant 'source_id' for nicer printing
+                    if not fetch:
+                        columns = columns[
+                            ((types == 'REAL') | (types == 'INTEGER') | (types == 'TEXT')) & (columns != 'source_id')]
 
                     # Query the table
                     try:
@@ -1219,7 +1220,7 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
         else:
             print("Could not output spectrum: {}".format(spectrum))
 
-    def show_image(self, image_id, table='images', column='image', overplot=False, cmap='hot'):
+    def show_image(self, image_id, table='images', column='image', overplot=False, cmap='hot', log=False):
         """
         Plots a spectrum from the given column and table
 
@@ -1254,7 +1255,15 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
                     ax = plt.gca()
                     
                 # Plot the data
-                ax.imshow(img, cmap=cmap)
+                cmap = plt.get_cmap(cmap)
+                cmap.set_under(color='white')
+                vmin = 0.0000001
+                vmax = np.nanmax(img)
+                if log:
+                    from matplotlib.colors import LogNorm
+                    ax.imshow(img, cmap=cmap, norm=LogNorm(vmin=vmin,vmax=vmax), interpolation='none')
+                else:
+                    ax.imshow(img, cmap=cmap, interpolation='none', vmin=0.0000001)
                 X, Y = plt.xlim(), plt.ylim()
                 plt.ion()
                 
