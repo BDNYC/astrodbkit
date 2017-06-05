@@ -211,8 +211,8 @@ class Database:
 
         Parameters
         ----------
-        data: str, sequence
-          The path to an ascii file or a list of lists. The first row or element must
+        data: str, array-like, astropy.table.Table
+          The path to an ascii file, array-like object, or table. The first row or element must
           be the list of column names
         table: str
           The name of the table into which the data should be inserted
@@ -236,7 +236,11 @@ class Database:
         # Or read the sequence of data elements into a table
         elif isinstance(data, (list, tuple, np.ndarray)):
             data = ii.read(['|'.join(map(str, row)) for row in data], data_start=1, delimiter='|')
-
+            
+        # Or if it's already an astropy table
+        elif isinstance(data, at.Table):
+            pass
+            
         else:
             data = None
 
@@ -305,6 +309,28 @@ class Database:
                         new_records[n] = _autofill_spec_record(new_rec)
                     else:
                         print('Error adding the spectrum at {}'.format(new_rec['spectrum']))
+                        del_records.append(n)
+
+                # Remove bad records from the table
+                new_records.remove_rows(del_records)
+                
+            # For images, try to populate the table by reading the FITS header
+            if table.lower() == 'images':
+                for n, new_rec in enumerate(new_records):
+
+                    # Convert relative path to absolute path
+                    relpath = new_rec['image']
+                    if relpath.startswith('$'):
+                        abspath = os.popen('echo {}'.format(relpath.split('/')[0])).read()[:-1]
+                        if abspath:
+                            new_rec['image'] = relpath.replace(relpath.split('/')[0], abspath)
+
+                    # Test if the file exists and try to pull metadata from the FITS header
+                    if os.path.isfile(new_rec['image']):
+                        new_records[n]['image'] = relpath
+                        new_records[n] = _autofill_spec_record(new_rec)
+                    else:
+                        print('Error adding the image at {}'.format(new_rec['image']))
                         del_records.append(n)
 
                 # Remove bad records from the table
