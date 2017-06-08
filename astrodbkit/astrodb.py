@@ -73,31 +73,31 @@ class Database:
         
         """
         if isinstance(dbpath, str):
-
+            
             if os.path.isfile(dbpath):
-
+                
                 # Alternatively, just list the directory with the schema and .sql files and require that dbpath
                 # is the schema file, then load the tables individually
-
+                
                 # Save the directory to the tabledata as an attribute
                 self.directory = directory or os.path.join(os.path.dirname(dbpath), 'tabledata')
-
+                
                 # If it is a .sql file, create an empty database in the
                 # working directory and generate the database from file
                 if dbpath.endswith('.sql'):
                     self.sqlpath = dbpath
                     self.dbpath = dbpath.replace('.sql', '.db')
-
+                    
                     # If the .db file already exists, rename it
                     if os.path.isfile(self.dbpath):
                         date = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
                         print("Renaming existing file {} to {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
                         os.system("mv {} {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
-
+                        
                     # Make the new database from the .sql files
                     # First the schema...
                     os.system("sqlite3 {} < {}".format(self.dbpath, self.sqlpath))
-
+                    
                     # Prepare to deactivate the triggers (all, just in case)
                     trigger_names = os.popen(
                         """echo "SELECT name FROM sqlite_master WHERE type='trigger';" | sqlite3 {}"""
@@ -108,7 +108,7 @@ class Database:
                     if len(trigger_names) > 0:
                         for trigger_name in trigger_names:
                             os.system("""echo "DROP TRIGGER {};" | sqlite3 {}""".format(trigger_name, self.dbpath))
-
+                            
                     # Then load the table data...
                     print('Populating database...')
                     # Grabbing only tables, not tables and views
@@ -119,58 +119,58 @@ class Database:
                         print('Loading {}'.format(table))
                         os.system('sqlite3 {0} ".read {1}.sql"'.format(self.dbpath,
                                                                            os.path.join(self.directory, table)))
-
+                                                                           
                     # Reactivate the triggers
                     if len(trigger_sql) > 0:
                         for new_trigger in trigger_sql.split('END'):
                             if new_trigger == '\n': continue
                             # print(new_trigger + 'END;')
                             os.system("""echo "{}" | sqlite3 {}""".format(new_trigger + 'END;', self.dbpath))
-
+                            
                 elif dbpath.endswith('.db'):
                     self.sqlpath = dbpath.replace('.db', '.sql')
                     self.dbpath = dbpath
                 else:
                     self.sqlpath = dbpath + '.sql'
                     self.dbpath = dbpath
-
+                    
                 # Create .sql schema file if it doesn't exist
                 os.system('touch {}'.format(self.sqlpath.replace(' ', '\ ')))
-
+                
                 # Create connection
                 con = sqlite3.connect(self.dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES, check_same_thread=False)
                 con.text_factory = sqlite3.OptimizedUnicode
                 self.conn = con
                 self.curs = con.cursor()
                 self.list = con.cursor().execute
-
+                
                 # Make dictionary
                 def dict_factory(cursor, row):
                     d = {}
                     for idx, col in enumerate(cursor.description):
                         d[col[0]] = row[idx]
                     return d
-
+                    
                 self.dict = con.cursor()
                 self.dict.row_factory = dict_factory
                 self.dict = self.dict.execute
-
+                
                 # Make sure the ignore table exists
                 self.list(
                     "CREATE TABLE IF NOT EXISTS ignore (id INTEGER PRIMARY KEY, id1 INTEGER, id2 INTEGER, tablename TEXT)")
-
+                    
                 # Activate foreign key support
                 self.list('PRAGMA foreign_keys=ON')
-
+                
                 print("Database ready for use")
-
+                
             else:
                 raise InputError("Sorry, could not find the file '{}'".format(dbpath))
-
+                
         # Also accept a dictionary of astropy tables with the keys as the table names
         # Create a database in memory!
         elif isinstance(dbpath, dict):
-
+            
             # Create connection
             con = sqlite3.connect("::memory::", isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES,
                                   check_same_thread=False)
@@ -178,41 +178,42 @@ class Database:
             self.conn = con
             self.curs = con.cursor()
             self.list = con.cursor().execute
-
+            
             # Make dictionary
             def dict_factory(cursor, row):
                 d = {}
                 for idx, col in enumerate(cursor.description):
                     d[col[0]] = row[idx]
                 return d
-
+                
             self.dict = con.cursor()
             self.dict.row_factory = dict_factory
             self.dict = self.dict.execute
-
+            
             # Load the given data into tables
-            table_names = [n for n in dbpath.keys() if not n.startswith('_dtypes_')]
+            table_names = [n for n in dbpath.keys() if not n.startswith('_dtypes_') and dbpath.get(n)]
             for name in table_names:
-
+                
                 # Get the table column names
                 table = dbpath[name]
                 cols = table.colnames
-
+                
                 # Get the table dtypes
                 dtypes = dbpath.get('_dtypes_'+name, ['']*len(cols))
-
+                
                 # Add the table to the db
                 col_txt = ','.join(['{} {}'.format(c,d) for c,d, in zip(cols,dtypes)])
+                self.list("DROP TABLE IF EXISTS {}".format(name))
                 self.list("CREATE TABLE IF NOT EXISTS {} ({})".format(name, col_txt))
-
+                
                 # Add the data
                 for i in range(len(table)):
                     inp = repr(tuple(table[i]))
                     inp = inp.replace('None','NULL')
                     self.list("INSERT INTO {} VALUES {}".format(name,inp))
-
+                    
             print("Database ready for use")
-
+            
         else:
             print('Please provide a the path to a file or a dictionary of tables.')
 
