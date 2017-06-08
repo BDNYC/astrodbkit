@@ -58,85 +58,122 @@ class Database:
     def __init__(self, dbpath, directory=''):
         """
         Initialize the database.
-
+        
         Parameters
         ----------
         dbpath: str
             The path to the .db or .sql database file.
         directory: str (optional)
             Folder in which individual tables are stored (Default: tabledata)
-
+        
         Returns
         -------
         object
             The database object
-
+        
         """
-        if os.path.isfile(dbpath):
+        if isinstance(dbpath, str):
 
-            # Alternatively, just list the directory with the schema and .sql files and require that dbpath
-            # is the schema file, then load the tables individually
+            if os.path.isfile(dbpath):
 
-            # Save the directory to the tabledata as an attribute
-            self.directory = directory or os.path.join(os.path.dirname(dbpath), 'tabledata')
+                # Alternatively, just list the directory with the schema and .sql files and require that dbpath
+                # is the schema file, then load the tables individually
 
-            # If it is a .sql file, create an empty database in the
-            # working directory and generate the database from file
-            if dbpath.endswith('.sql'):
-                self.sqlpath = dbpath
-                self.dbpath = dbpath.replace('.sql', '.db')
+                # Save the directory to the tabledata as an attribute
+                self.directory = directory or os.path.join(os.path.dirname(dbpath), 'tabledata')
 
-                # If the .db file already exists, rename it
-                if os.path.isfile(self.dbpath):
-                    date = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
-                    print("Renaming existing file {} to {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
-                    os.system("mv {} {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
+                # If it is a .sql file, create an empty database in the
+                # working directory and generate the database from file
+                if dbpath.endswith('.sql'):
+                    self.sqlpath = dbpath
+                    self.dbpath = dbpath.replace('.sql', '.db')
 
-                # Make the new database from the .sql files
-                # First the schema...
-                os.system("sqlite3 {} < {}".format(self.dbpath, self.sqlpath))
+                    # If the .db file already exists, rename it
+                    if os.path.isfile(self.dbpath):
+                        date = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+                        print("Renaming existing file {} to {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
+                        os.system("mv {} {}".format(self.dbpath, self.dbpath.replace('.db', date+'.db')))
 
-                # Prepare to deactivate the triggers (all, just in case)
-                trigger_names = os.popen(
-                    """echo "SELECT name FROM sqlite_master WHERE type='trigger';" | sqlite3 {}"""
-                        .format(self.dbpath)).read().replace('\n', ' ').split()
-                trigger_sql = os.popen(
-                    """echo "SELECT sql FROM sqlite_master WHERE type='trigger';" | sqlite3 {}"""
-                        .format(self.dbpath)).read()
-                if len(trigger_names) > 0:
-                    for trigger_name in trigger_names:
-                        os.system("""echo "DROP TRIGGER {};" | sqlite3 {}""".format(trigger_name, self.dbpath))
+                    # Make the new database from the .sql files
+                    # First the schema...
+                    os.system("sqlite3 {} < {}".format(self.dbpath, self.sqlpath))
 
-                # Then load the table data...
-                print('Populating database...')
-                # Grabbing only tables, not tables and views
-                # tables = os.popen('sqlite3 {} ".tables"'.format(self.dbpath)).read().replace('\n',' ').split()
-                tables = os.popen("""echo "SELECT name FROM sqlite_master WHERE type='table';" | sqlite3 {}"""
-                                  .format(self.dbpath)).read().replace('\n',' ').split()
-                for table in tables:
-                    print('Loading {}'.format(table))
-                    os.system('sqlite3 {0} ".read {1}.sql"'.format(self.dbpath,
-                                                                       os.path.join(self.directory, table)))
+                    # Prepare to deactivate the triggers (all, just in case)
+                    trigger_names = os.popen(
+                        """echo "SELECT name FROM sqlite_master WHERE type='trigger';" | sqlite3 {}"""
+                            .format(self.dbpath)).read().replace('\n', ' ').split()
+                    trigger_sql = os.popen(
+                        """echo "SELECT sql FROM sqlite_master WHERE type='trigger';" | sqlite3 {}"""
+                            .format(self.dbpath)).read()
+                    if len(trigger_names) > 0:
+                        for trigger_name in trigger_names:
+                            os.system("""echo "DROP TRIGGER {};" | sqlite3 {}""".format(trigger_name, self.dbpath))
 
-                # Reactivate the triggers
-                if len(trigger_sql) > 0:
-                    for new_trigger in trigger_sql.split('END'):
-                        if new_trigger == '\n': continue
-                        # print(new_trigger + 'END;')
-                        os.system("""echo "{}" | sqlite3 {}""".format(new_trigger + 'END;', self.dbpath))
+                    # Then load the table data...
+                    print('Populating database...')
+                    # Grabbing only tables, not tables and views
+                    # tables = os.popen('sqlite3 {} ".tables"'.format(self.dbpath)).read().replace('\n',' ').split()
+                    tables = os.popen("""echo "SELECT name FROM sqlite_master WHERE type='table';" | sqlite3 {}"""
+                                      .format(self.dbpath)).read().replace('\n',' ').split()
+                    for table in tables:
+                        print('Loading {}'.format(table))
+                        os.system('sqlite3 {0} ".read {1}.sql"'.format(self.dbpath,
+                                                                           os.path.join(self.directory, table)))
 
-            elif dbpath.endswith('.db'):
-                self.sqlpath = dbpath.replace('.db', '.sql')
-                self.dbpath = dbpath
+                    # Reactivate the triggers
+                    if len(trigger_sql) > 0:
+                        for new_trigger in trigger_sql.split('END'):
+                            if new_trigger == '\n': continue
+                            # print(new_trigger + 'END;')
+                            os.system("""echo "{}" | sqlite3 {}""".format(new_trigger + 'END;', self.dbpath))
+
+                elif dbpath.endswith('.db'):
+                    self.sqlpath = dbpath.replace('.db', '.sql')
+                    self.dbpath = dbpath
+                else:
+                    self.sqlpath = dbpath + '.sql'
+                    self.dbpath = dbpath
+
+                # Create .sql schema file if it doesn't exist
+                os.system('touch {}'.format(self.sqlpath.replace(' ', '\ ')))
+
+                # Create connection
+                con = sqlite3.connect(self.dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES, check_same_thread=False)
+                con.text_factory = sqlite3.OptimizedUnicode
+                self.conn = con
+                self.curs = con.cursor()
+                self.list = con.cursor().execute
+
+                # Make dictionary
+                def dict_factory(cursor, row):
+                    d = {}
+                    for idx, col in enumerate(cursor.description):
+                        d[col[0]] = row[idx]
+                    return d
+
+                self.dict = con.cursor()
+                self.dict.row_factory = dict_factory
+                self.dict = self.dict.execute
+
+                # Make sure the ignore table exists
+                self.list(
+                    "CREATE TABLE IF NOT EXISTS ignore (id INTEGER PRIMARY KEY, id1 INTEGER, id2 INTEGER, tablename TEXT)")
+
+                # Activate foreign key support
+                self.list('PRAGMA foreign_keys=ON')
+
+                print("Database ready for use")
+
             else:
-                self.sqlpath = dbpath + '.sql'
-                self.dbpath = dbpath
+                raise InputError("Sorry, could not find the file '{}'".format(dbpath))
 
-            # Create .sql schema file if it doesn't exist
-            os.system('touch {}'.format(self.sqlpath.replace(' ', '\ ')))
+        # Also accept a dictionary of astropy tables with the keys as the table names
+        # Create a database in memory!
+        elif isinstance(dbpath, dict):
 
             # Create connection
-            con = sqlite3.connect(self.dbpath, isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES)
+            con = sqlite3.connect("::memory::", isolation_level=None, detect_types=sqlite3.PARSE_DECLTYPES,
+                                  check_same_thread=False)
             con.text_factory = sqlite3.OptimizedUnicode
             self.conn = con
             self.curs = con.cursor()
@@ -153,17 +190,31 @@ class Database:
             self.dict.row_factory = dict_factory
             self.dict = self.dict.execute
 
-            # Make sure the ignore table exists
-            self.list(
-                "CREATE TABLE IF NOT EXISTS ignore (id INTEGER PRIMARY KEY, id1 INTEGER, id2 INTEGER, tablename TEXT)")
+            # Load the given data into tables
+            table_names = [n for n in dbpath.keys() if not n.startswith('_dtypes_')]
+            for name in table_names:
 
-            # Activate foreign key support
-            self.list('PRAGMA foreign_keys=ON')
+                # Get the table column names
+                table = dbpath[name]
+                cols = table.colnames
+
+                # Get the table dtypes
+                dtypes = dbpath.get('_dtypes_'+name, ['']*len(cols))
+
+                # Add the table to the db
+                col_txt = ','.join(['{} {}'.format(c,d) for c,d, in zip(cols,dtypes)])
+                self.list("CREATE TABLE IF NOT EXISTS {} ({})".format(name, col_txt))
+
+                # Add the data
+                for i in range(len(table)):
+                    inp = repr(tuple(table[i]))
+                    inp = inp.replace('None','NULL')
+                    self.list("INSERT INTO {} VALUES {}".format(name,inp))
 
             print("Database ready for use")
 
         else:
-            raise InputError("Sorry, could not find the file '{}'".format(dbpath))
+            print('Please provide a the path to a file or a dictionary of tables.')
 
     def __repr__(self):
         self.info()
@@ -186,17 +237,17 @@ class Database:
         """
         import datetime
         import socket
-
+        
         # Spit out warning messages if the user does not provide the needed information
         if user == "" or mod_tables == "" or user_desc == "":
             print("You must supply your name, the name(s) of table(s) edited, "
                   "and a description for add_changelog() to work.")
             raise InputError('Did not supply the required input, see help(db.add_changelog) for more information.\n'
                              'Your inputs: \n\t user = {}\n\t mod_tables = {}\n\t user_desc = {}'.format(user, mod_tables, user_desc))
-
+                             
         # Making tables all uppercase for consistency
         mod_tables = mod_tables.upper()
-
+        
         data = list()
         data.append(['date', 'user', 'machine_name', 'modified_tables', 'user_description'])
         datestr = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -208,7 +259,7 @@ class Database:
         """
         Adds data to the specified database table. Column names must match table fields to insert,
         however order and completeness don't matter.
-
+        
         Parameters
         ----------
         data: str, array-like, astropy.table.Table
@@ -269,7 +320,7 @@ class Database:
                         band = data[list(set(columns) & set(data.colnames)) + [b, b + '_unc']]
                         for suf in ['', '_unc']:
                             band.rename_column(b + suf, 'magnitude' + suf)
-                        band.add_column(at.Column([b] * len(band), name='band'))
+                        band.add_column(at.Column([b] * len(band), name='band', dtype='O'))
 
                         # Add the band data to the list of new_records
                         new_records = at.vstack([new_records, band])
@@ -1420,7 +1471,7 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
         try:
             # Restrict queries to SELECT and PRAGMA statements
             if SQL.lower().startswith('select') or SQL.lower().startswith('pragma'):
-
+                
                 # Make the query explicit so that column and table names are preserved
                 # Then, get the data as a dictionary
                 origSQL = SQL
@@ -1430,44 +1481,48 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
                 except:
                     print('WARNING: Unable to use converters')
                     dictionary = self.dict(origSQL, params).fetchall()
-
+                    
                 if any(dictionary):
-
+                    
                     # Fetch one
-                    if fetch == 'one': dictionary = [dictionary.pop(0)]
-
+                    if fetch == 'one':
+                        dictionary = [dictionary.pop(0)]
+                        
                     # Make an Astropy table
                     table = at.Table(dictionary)
-
+                    
                     # Reorder the columns
                     try:
                         table = table[columns]
                     except:
                         pass
-
+                        
                     # Make an array
                     array = np.asarray(table)
-
+                    
                     # Unpack the results if necessary (data types are not preserved)
-                    if unpack: array = np.array(zip(*array))
-
+                    if unpack: 
+                        array = np.array(zip(*array))
+                        
                     # print on screen
-                    if verbose: pprint(table)
-
+                    if verbose:
+                        pprint(table)
+                        
                     # print the results to file
                     if export:
                         # If .vot or .xml, assume VOTable export with votools
                         if export.lower().endswith('.xml') or export.lower().endswith('.vot'):
                             votools.dict_tovot(dictionary, export)
+                            
                         # Otherwise print as ascii
                         else:
                             ii.write(table, export, Writer=ii.FixedWidthTwoLine, fill_values=[('None', '-')])
-
+                            
                     # Or return the results
                     else:
                         if fetch == 'one':
                             dictionary, array = dictionary[0], array if unpack else np.array(list(array[0]))
-
+                            
                         if fmt == 'table':
                             return table
                         elif fmt == 'dict':
@@ -1476,14 +1531,14 @@ The full documentation can be found online at: http://astrodbkit.readthedocs.io/
                             return table.to_pandas()
                         else:
                             return array
-
+                            
                 else:
                     return
-
+                    
             else:
                 print(
                 'Queries must begin with a SELECT or PRAGMA statement. For database modifications use self.modify() method.')
-
+                
         except IOError:
             print('Could not execute: ' + SQL)
 
