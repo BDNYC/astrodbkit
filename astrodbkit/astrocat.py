@@ -33,7 +33,7 @@ class Catalog(object):
         """
         self.name = name
         self.catalog = pd.DataFrame(columns=('source_id','ra','dec','flag','cat_name','catID'))
-        self.n_sources = len(self.catalog)
+        self.n_sources = 0
         self.history = "{}: Database created".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         self.catalogs = {}
         self.xmatch_radius = 0
@@ -102,18 +102,32 @@ class Catalog(object):
             self.history += "\n{}: Catalog {} ingested.".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),cat_name)
             self.catalogs.update({cat_name:(path,id_col)})
             
-    def inventory(self, source_id):
+    def inventory(self, source_id, plot=True):
         """
         Look at the inventory for a given source
         """
-        print('Source:')
-        print(at.Table.from_pandas(self.catalog[self.catalog['id']==source_id]).pprint())
-        for cat_name in self.catalogs:
-            cat = getattr(self, cat_name)
-            rows = cat[cat['source_id']==source_id]
-            if not rows.empty:
-                print('\n{}:'.format(cat_name))
-                at.Table.from_pandas(rows).pprint()
+        if self.n_sources==0:
+            print('Please run group_sources() to create the catalog first.')
+        
+        else:
+            
+            if source_id>self.n_sources or source_id<1 or not isinstance(source_id, int):
+                print('Please enter an integer between 1 and',self.n_sources)
+            
+            else:
+            
+                print('Source:')
+                print(at.Table.from_pandas(self.catalog[self.catalog['id']==source_id]).pprint())
+                for cat_name in self.catalogs:
+                    cat = getattr(self, cat_name)
+                    rows = cat[cat['source_id']==source_id]
+                    if not rows.empty:
+                        print('\n{}:'.format(cat_name))
+                        at.Table.from_pandas(rows).pprint()
+                
+                if plot:
+                    plt.figure()
+                    plt.plot()
             
     def Vizier_xmatch(self, viz_cat, cat_name, ra_col='_RAJ2000', dec_col='_DEJ2000', radius=''):
         """
@@ -158,7 +172,7 @@ class Catalog(object):
         # Regroup
         self.group_sources(self.xmatch_radius)
     
-    def group_sources(self, radius=0.001, plot=False):
+    def group_sources(self, radius=0.0001, plot=False):
         """
         Calculate the centers of the point clusters given the
         radius and minimum number of points
@@ -169,6 +183,7 @@ class Catalog(object):
             The list of (x,y) coordinates of all clicks
         radius: int
             The distance threshold in degrees for cluster membership
+            [default of 0.36 arcseconds]
 
         Returns
         -------
@@ -187,14 +202,14 @@ class Catalog(object):
         coords = cats[['ra_corr','dec_corr']].values
         
         # Perform DBSCAN to find clusters
-        db = DBSCAN(eps=radius, min_samples=1).fit(coords)
+        db = DBSCAN(eps=radius, min_samples=1, n_jobs=-1).fit(coords)
         
         # Group the sources
         core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
         core_samples_mask[db.core_sample_indices_] = True
         source_ids = db.labels_+1
         unique_source_ids = list(set(source_ids))
-        n_sources = len(unique_source_ids)
+        self.n_sources = len(unique_source_ids)
         
         # Get the average coordinates of all clusters
         unique_coords = np.asarray([np.mean(coords[source_ids==id], axis=0) for id in list(set(source_ids))])
@@ -203,7 +218,8 @@ class Catalog(object):
         self.catalog = pd.DataFrame(columns=('id','ra','dec','flag'))
         self.catalog['id'] = unique_source_ids
         self.catalog[['ra','dec']] = unique_coords
-        self.catalog['flag'] = ['d{}'.format(i) if i>1 else '' for i in Counter(source_ids).values()]
+        # self.catalog['flag'] = ['d{}'.format(i) if i>1 else '' for i in Counter(source_ids).values()]
+        self.catalog['datasets'] = Counter(source_ids).values()
         
         # Update history
         self.history += "\n{}: Catalog grouped with radius {} arcsec.".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), self.xmatch_radius)
@@ -229,7 +245,7 @@ class Catalog(object):
         # Plot it
         if plot:
             plt.figure()
-            plt.title('{} clusters for {} sources'.format(n_sources,len(coords)))
+            plt.title('{} clusters for {} sources'.format(self.n_sources,len(coords)))
             
             colors = [plt.cm.Spectral(each) for each in np.linspace(0, 1, n_sources)]
             for k, col in zip(unique_source_ids, colors):
@@ -244,6 +260,12 @@ class Catalog(object):
                     
                 plt.plot(xy[:, 0], xy[:, 1], color=tuple(col), marker=marker, markerfacecolor=tuple(col))
                 
+    def find_outliers(self):
+        """
+        Find pairwise distance mean of each cluster and flag outliers
+        """
+        pass
+    
     def drop_catalog(self, cat_name):
         """
         Remove an imported catalog from the Dataset object
