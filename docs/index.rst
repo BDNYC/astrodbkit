@@ -201,6 +201,7 @@ Contents
    :maxdepth: 2
 
    astrodb
+   astrocat
    votools
 
 Indices and tables
