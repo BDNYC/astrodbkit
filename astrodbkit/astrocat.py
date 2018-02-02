@@ -9,6 +9,7 @@ import pandas as pd
 import sys
 import astropy.units as u
 import astropy.table as at
+import astropy.coordinates as coord
 import datetime
 from sklearn.cluster import DBSCAN
 from collections import Counter
@@ -105,6 +106,11 @@ class Catalog(object):
     def inventory(self, source_id):
         """
         Look at the inventory for a given source
+        
+        Parameters
+        ----------
+        source_id: int
+            The id of the source to inspect
         """
         if self.n_sources==0:
             print('Please run group_sources() to create the catalog first.')
@@ -124,12 +130,78 @@ class Catalog(object):
                     if not rows.empty:
                         print('\n{}:'.format(cat_name))
                         at.Table.from_pandas(rows).pprint()
+                        
+    def _catalog_check(self, cat_name):
+        """
+        Check to see if the name of the ingested catalog is valid
+        
+        Parameters
+        ----------
+        cat_name: str
+            The name of the catalog in the Catalog object
+        
+        Returns
+        -------
+        str
+            The catalog name in astroquery format
+        """
+        good = True
+        
+        # Make sure the attribute name is good
+        if cat_name[0].isdigit():
+            print("No names beginning with numbers please!")
+            good = False
+            
+        # Make sure catalog is unique
+        if cat_name in self.catalogs:
+            print('Catalog {} already ingested.'.format(cat_name))
+            good = False
+        
+        return good
+    
+    def Vizier_query(self, viz_cat, cat_name, ra, dec, radius, ra_col='RAJ2000', dec_col='DEJ2000'):
+        """
+        Use astroquery to search a catalog for sources within a search cone
+        
+        Parameters
+        ----------
+        viz_cat: str
+            The catalog string from Vizier (e.g. 'II/246' for 2MASS PSC)
+        cat_name: str
+            A name for the imported catalog (e.g. '2MASS')
+        ra: astropy.units.quantity.Quantity
+            The RA of the center of the cone search
+        dec: astropy.units.quantity.Quantity
+            The Dec of the center of the cone search
+        radius: astropy.units.quantity.Quantity
+            The radius of the cone search
+        """
+        # Verify the cat_name
+        if self._catalog_check(cat_name):
+            
+            # Prep the current catalog as an astropy.QTable
+            tab = at.Table.from_pandas(self.catalog)
+            
+            # Cone search Vizier
+            print("Searching {} for sources withiin {} of ({}, {}). Please be patient...".format(viz_cat, radius, ra, dec))
+            crds = coord.SkyCoord(ra=ra, dec=dec, frame='icrs')
+            # viz = Vizier(columns=["**", "+_r"], catalog=viz_cat)
+            data = Vizier.query_region(crds, radius=radius, catalog=viz_cat)[0]
+            print(data)
+            
+            # Ingest the data
+            try:
+                self.ingest_data(data, cat_name, 'id', ra_col='_RAJ2000', dec_col='_DEJ2000')
+            except:
+                self.ingest_data(data, cat_name, 'id', ra_col=ra_col, dec_col=dec_col)
+            
+            # Regroup
+            if len(self.catalogs)>1:
+                self.group_sources(self.xmatch_radius)
             
     def Vizier_xmatch(self, viz_cat, cat_name, ra_col='_RAJ2000', dec_col='_DEJ2000', radius=''):
         """
         Use astroquery to pull in and cross match a catalog with sources in self.catalog
-        Note that ingest_ascii adds all rows as potential sources while this only cross matches
-        with existing catalog sources, adding no new sources.
         
         Parameters
         ----------
@@ -140,33 +212,28 @@ class Catalog(object):
         radius: astropy.units.quantity.Quantity
             The matching radius
         """
-        # Make sure the attribute name is good
-        if cat_name[0] in range(10):
-            print("No names beginning with numbers please!")
-            return
-            
-        # Make sure catalog is unique
-        if cat_name in self.catalogs:
-            print('Catalog {} already ingested.'.format(cat_name))
-            
         # Make sure sources have been grouped
         if self.catalog.empty:
             print('Please run group_sources() before cross matching.')
             return
             
-        # Prep the current catalog as an astropy.QTable
-        tab = at.Table.from_pandas(self.catalog)
-        viz_cat = "vizier:{}".format(viz_cat)
-        
-        # Crossmatch with Vizier
-        print("Cross matching {} sources with {} catalog. Please be patient...".format(len(tab), viz_cat))
-        data = XMatch.query(cat1=tab, cat2=viz_cat, max_distance=radius or self.xmatch_radius*u.deg, colRA1='ra', colDec1='dec', colRA2=ra_col, colDec2=dec_col)
-        
-        # Ingest the data
-        self.ingest_data(data, cat_name, 'id', ra_col=ra_col, dec_col=dec_col)
-        
-        # Regroup
-        self.group_sources(self.xmatch_radius)
+        if self._catalog_check(cat_name):
+            
+            # Verify the cat_name
+            viz_cat = "vizier:{}".format(viz_cat)
+            
+            # Prep the current catalog as an astropy.QTable
+            tab = at.Table.from_pandas(self.catalog)
+            
+            # Crossmatch with Vizier
+            print("Cross matching {} sources with {} catalog. Please be patient...".format(len(tab), viz_cat))
+            data = XMatch.query(cat1=tab, cat2=viz_cat, max_distance=radius or self.xmatch_radius*u.deg, colRA1='ra', colDec1='dec', colRA2=ra_col, colDec2=dec_col)
+            
+            # Ingest the data
+            self.ingest_data(data, cat_name, 'id', ra_col=ra_col, dec_col=dec_col)
+            
+            # Regroup
+            self.group_sources(self.xmatch_radius)
     
     def group_sources(self, radius=0.0001, plot=False):
         """
