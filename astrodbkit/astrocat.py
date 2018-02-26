@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import sys
-import astropy.units as u
+import astropy.units as q
 import astropy.table as at
 import astropy.coordinates as coord
 import datetime
@@ -37,7 +37,7 @@ class Catalog(object):
         self.n_sources = 0
         self.history = "{}: Database created".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         self.catalogs = {}
-        self.xmatch_radius = 0
+        self.xmatch_radius = 0.0001
         
     @property
     def info(self):
@@ -88,10 +88,25 @@ class Catalog(object):
                 print("Sorry, but I cannot read that data. Try an ascii file path, astropy table, or pandas data frame.")
                 return
                 
+            # Make sure ra and dec are decimal degrees
+            if isinstance(data[ra_col][0], str):
+                
+                crds = coord.SkyCoord(ra=data[ra_col], dec=data[dec_col], unit=(q.hour, q.deg), frame='icrs')
+                data.insert(0,'dec', crds.dec)
+                data.insert(0,'ra', crds.ra)
+                
+            elif isinstance(data[ra_col][0], float):
+                
+                data.rename(columns={ra_col:'ra', dec_col:'dec'}, inplace=True)
+            
+            else:
+                print("I can't read the RA and DEC of the input data. Please try again.")
+                return
+                
             # Change some names
             data.insert(0,'catID', ['{}_{}'.format(cat_name,n+1) for n in range(len(data))])
-            data.insert(0,'dec_corr', data[dec_col])
-            data.insert(0,'ra_corr', data[ra_col])
+            data.insert(0,'dec_corr', data['dec'])
+            data.insert(0,'ra_corr', data['ra'])
             data.insert(0,'source_id', np.nan)
             
             print('Ingesting {} rows from {} catalog...'.format(len(data),cat_name))
@@ -159,7 +174,7 @@ class Catalog(object):
         
         return good
     
-    def Vizier_query(self, viz_cat, cat_name, ra, dec, radius, ra_col='RAJ2000', dec_col='DEJ2000'):
+    def Vizier_query(self, viz_cat, cat_name, ra, dec, radius, ra_col='RAJ2000', dec_col='DEJ2000', group=True):
         """
         Use astroquery to search a catalog for sources within a search cone
         
@@ -185,21 +200,16 @@ class Catalog(object):
             # Cone search Vizier
             print("Searching {} for sources withiin {} of ({}, {}). Please be patient...".format(viz_cat, radius, ra, dec))
             crds = coord.SkyCoord(ra=ra, dec=dec, frame='icrs')
-            # viz = Vizier(columns=["**", "+_r"], catalog=viz_cat)
             data = Vizier.query_region(crds, radius=radius, catalog=viz_cat)[0]
-            print(data)
             
             # Ingest the data
-            try:
-                self.ingest_data(data, cat_name, 'id', ra_col='_RAJ2000', dec_col='_DEJ2000')
-            except:
-                self.ingest_data(data, cat_name, 'id', ra_col=ra_col, dec_col=dec_col)
+            self.ingest_data(data, cat_name, 'id', ra_col=ra_col, dec_col=dec_col)
             
             # Regroup
-            if len(self.catalogs)>1:
+            if len(self.catalogs)>1 and group:
                 self.group_sources(self.xmatch_radius)
             
-    def Vizier_xmatch(self, viz_cat, cat_name, ra_col='_RAJ2000', dec_col='_DEJ2000', radius=''):
+    def Vizier_xmatch(self, viz_cat, cat_name, ra_col='_RAJ2000', dec_col='_DEJ2000', radius='', group=True):
         """
         Use astroquery to pull in and cross match a catalog with sources in self.catalog
         
@@ -227,15 +237,16 @@ class Catalog(object):
             
             # Crossmatch with Vizier
             print("Cross matching {} sources with {} catalog. Please be patient...".format(len(tab), viz_cat))
-            data = XMatch.query(cat1=tab, cat2=viz_cat, max_distance=radius or self.xmatch_radius*u.deg, colRA1='ra', colDec1='dec', colRA2=ra_col, colDec2=dec_col)
+            data = XMatch.query(cat1=tab, cat2=viz_cat, max_distance=radius or self.xmatch_radius*q.deg, colRA1='ra', colDec1='dec', colRA2=ra_col, colDec2=dec_col)
             
             # Ingest the data
             self.ingest_data(data, cat_name, 'id', ra_col=ra_col, dec_col=dec_col)
             
             # Regroup
-            self.group_sources(self.xmatch_radius)
+            if group:
+                self.group_sources(self.xmatch_radius)
     
-    def group_sources(self, radius=0.0001, plot=False):
+    def group_sources(self, radius='', plot=False):
         """
         Calculate the centers of the point clusters given the
         radius and minimum number of points
@@ -264,10 +275,10 @@ class Catalog(object):
             # Clear the source grouping
             cats['oncID'] = np.nan
             cats['oncflag'] = ''
-            self.xmatch_radius = radius
+            self.xmatch_radius = radius or self.xmatch_radius
             
             # Make a list of the coordinates of each catalog row
-            coords = cats[['ra_corr','dec_corr']].values
+            coords = cats[['ra','dec']].values
             
             # Perform DBSCAN to find clusters
             db = DBSCAN(eps=radius, min_samples=1, n_jobs=-1).fit(coords)
@@ -350,7 +361,7 @@ class Catalog(object):
         # Update history
         print("Deleted {} catalog.".format(cat_name))
         self.history += "\n{}: Deleted {} catalog.".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), cat_name)
-                
+        
     def load(self, path):
         """
         Load the catalog from file
