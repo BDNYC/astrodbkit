@@ -318,12 +318,14 @@ class Database:
             columns, types, required = [np.array(metadata[n]) for n in ['name', 'type', 'notnull']]
             new_records = at.Table(names=columns, dtype=[type_dict[t] for t in types])
             
-            # Convert data dtypes to those of the existing table
+            # Fix column dtypes and blanks
             for col in data.colnames:
+                
+                # Convert data dtypes to those of the existing table
                 try:
                     temp = data[col].astype(new_records[col].dtype)
                     data.replace_column(col, temp)
-                except (KeyError, AttributeError):
+                except KeyError:
                     continue
                     
             # If a row contains photometry for multiple bands, use the *multiband argument and execute this
@@ -331,15 +333,19 @@ class Database:
                 
                 # Pull out columns that are band names
                 for b in list(set(bands) & set(data.colnames)):
+                    
                     try:
                         # Get the repeated data plus the band data and rename the columns
                         band = data[list(set(columns) & set(data.colnames)) + [b, b + '_unc']]
                         for suf in ['', '_unc']:
-                            band.rename_column(b + suf, 'magnitude' + suf)
+                            band.rename_column(b+suf, 'magnitude'+suf)
+                            temp = band['magnitude'+suf].astype(new_records['magnitude'+suf].dtype)
+                            band.replace_column('magnitude'+suf, temp)
                         band.add_column(at.Column([b] * len(band), name='band', dtype='O'))
                         
                         # Add the band data to the list of new_records
                         new_records = at.vstack([new_records, band])
+                        
                     except IOError:
                         pass
                         

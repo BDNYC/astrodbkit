@@ -174,7 +174,44 @@ class Catalog(object):
         
         return good
     
-    def Vizier_query(self, viz_cat, cat_name, ra, dec, radius, ra_col='RAJ2000', dec_col='DEJ2000', group=True):
+    def SDSS_spectra_query(self, cat_name, ra, dec, radius, group=True, **kwargs):
+        """
+        Use astroquery to search SDSS for sources within a search cone
+        
+        Parameters
+        ----------
+        cat_name: str
+            A name for the imported catalog (e.g. '2MASS')
+        ra: astropy.units.quantity.Quantity
+            The RA of the center of the cone search
+        dec: astropy.units.quantity.Quantity
+            The Dec of the center of the cone search
+        radius: astropy.units.quantity.Quantity
+            The radius of the cone search
+        """
+        # Verify the cat_name
+        if self._catalog_check(cat_name):
+            
+            # Prep the current catalog as an astropy.QTable
+            tab = at.Table.from_pandas(self.catalog)
+            
+            # Cone search Vizier
+            print("Searching SDSS for sources withiin {} of ({}, {}). Please be patient...".format(viz_cat, radius, ra, dec))
+            crds = coord.SkyCoord(ra=ra, dec=dec, frame='icrs')
+            try:
+                data = SDSS.query_region(crds, spectro=True, radius=radius)
+            except:
+                print("No data found in SDSS withiin {} of ({}, {}).".format(viz_cat, radius, ra, dec))
+                return
+            
+            # Ingest the data
+            self.ingest_data(data, cat_name, 'id', ra_col=ra_col, dec_col=dec_col)
+            
+            # Regroup
+            if len(self.catalogs)>1 and group:
+                self.group_sources(self.xmatch_radius)    
+    
+    def Vizier_query(self, viz_cat, cat_name, ra, dec, radius, ra_col='RAJ2000', dec_col='DEJ2000', columns=["**"], group=True, **kwargs):
         """
         Use astroquery to search a catalog for sources within a search cone
         
@@ -200,7 +237,13 @@ class Catalog(object):
             # Cone search Vizier
             print("Searching {} for sources withiin {} of ({}, {}). Please be patient...".format(viz_cat, radius, ra, dec))
             crds = coord.SkyCoord(ra=ra, dec=dec, frame='icrs')
-            data = Vizier.query_region(crds, radius=radius, catalog=viz_cat)[0]
+            V = Vizier(columns=columns, **kwargs)
+            V.ROW_LIMIT = -1
+            try:
+                data = V.query_region(crds, radius=radius, catalog=viz_cat)[0]
+            except:
+                print("No data found in {} withiin {} of ({}, {}).".format(viz_cat, radius, ra, dec))
+                return
             
             # Ingest the data
             self.ingest_data(data, cat_name, 'id', ra_col=ra_col, dec_col=dec_col)
@@ -270,6 +313,7 @@ class Catalog(object):
         else:
             
             # Gather the catalogs
+            print('Grouping sources from the following catalogs:',list(self.catalogs.keys()))
             cats = pd.concat([getattr(self, cat_name) for cat_name in self.catalogs])
             
             # Clear the source grouping
@@ -278,7 +322,7 @@ class Catalog(object):
             self.xmatch_radius = radius or self.xmatch_radius
             
             # Make a list of the coordinates of each catalog row
-            coords = cats[['ra','dec']].values
+            coords = cats[['ra_corr','dec_corr']].values
             
             # Perform DBSCAN to find clusters
             db = DBSCAN(eps=radius, min_samples=1, n_jobs=-1).fit(coords)
@@ -326,7 +370,7 @@ class Catalog(object):
                 plt.figure()
                 plt.title('{} clusters for {} sources'.format(self.n_sources,len(coords)))
                 
-                colors = [plt.cm.Spectral(each) for each in np.linspace(0, 1, n_sources)]
+                colors = [plt.cm.Spectral(each) for each in np.linspace(0, 1, self.n_sources)]
                 for k, col in zip(unique_source_ids, colors):
                     
                     class_member_mask = (source_ids == k)
