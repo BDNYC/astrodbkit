@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # encoding: utf-8
-# Author: Joe Filippazzo, jcfilippazzo@gmail.com
+# Author: Joe Filippazzo, jfilippazzo@stsci.edu
 
 from __future__ import absolute_import
 from __future__ import division
