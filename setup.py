@@ -29,6 +29,6 @@ setup(
     ],
     keywords='astrophysics',
     packages=find_packages(exclude=['contrib', 'docs', 'tests*']),
-    install_requires=['numpy','astropy','matplotlib','requests','pandas','sklearn'],
+    install_requires=['numpy','astropy','matplotlib','requests','pandas','scikit-learn'],
 
 )
