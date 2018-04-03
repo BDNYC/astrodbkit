@@ -22,6 +22,7 @@ import astropy.io.ascii as ii
 import astropy.table as at
 from astropy.utils.data import download_file
 from . import votools
+from . import astrocat
 
 warnings.simplefilter('ignore')
 
@@ -270,7 +271,7 @@ class Database:
         data.append([datestr, user, machine, mod_tables, user_desc])
         self.add_data(data, 'changelog')
 
-    def add_data(self, data, table, delimiter='|', bands='', clean_up=True, verbose=False):
+    def add_data(self, data, table, delimiter='|', bands='', clean_up=True, rename_columns={}, column_fill={}, verbose=False):
         """
         Adds data to the specified database table. Column names must match table fields to insert,
         however order and completeness don't matter.
@@ -290,6 +291,11 @@ class Database:
             rows of data for database insertion
         clean_up: bool
             Run self.clean_up()
+        rename_columns: dict
+            A dictionary of the {input_col_name:desired_col_name} for table columns,
+            e.g. {'e_Jmag':'J_unc', 'RAJ2000':'ra'}
+        column_fill: dict
+            A dictionary of the column name and value to fill, e.g. {'instrument_id':2, 'band':'2MASS.J'}
         verbose: bool
           Print diagnostic messages
         """
@@ -304,15 +310,31 @@ class Database:
         elif isinstance(data, (list, tuple, np.ndarray)):
             data = ii.read(['|'.join(map(str, row)) for row in data], data_start=1, delimiter='|')
             
+        # Or convert pandas dataframe to astropy table
+        elif isinstance(data, pd.core.frame.DataFrame):
+            data = at.Table.from_pandas(data)
+            
         # Or if it's already an astropy table
         elif isinstance(data, at.Table):
             pass
             
         else:
             data = None
-
+            
         if data:
             
+            # Rename columns
+            if isinstance(rename_columns,str):
+                rename_columns = astrocat.default_rename_columns(rename_columns)
+            for input_name,new_name in rename_columns.items():
+                data.rename_column(input_name,new_name)
+                
+            # Add column fills
+            if isinstance(column_fill,str):
+                column_fill = astrocat.default_column_fill(column_fill)
+            for colname,fill_value in column_fill.items():
+                data[colname] = [fill_value]*len(data)
+                
             # Get list of all columns and make an empty table for new records
             metadata = self.query("PRAGMA table_info({})".format(table), fmt='table')
             columns, types, required = [np.array(metadata[n]) for n in ['name', 'type', 'notnull']]

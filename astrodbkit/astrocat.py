@@ -33,11 +33,14 @@ class Catalog(object):
             The name of the database
         """
         self.name = name
-        self.catalog = pd.DataFrame(columns=('source_id','ra','dec','flag','cat_name','catID'))
+        self.catalog = pd.DataFrame(columns=('id','ra','dec','flag','datasets'))
         self.n_sources = 0
         self.history = "{}: Database created".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         self.catalogs = {}
         self.xmatch_radius = 0.0001
+        
+        # Set a list of sources to ignore
+        self.ignore = []
         
     @property
     def info(self):
@@ -46,7 +49,60 @@ class Catalog(object):
         """
         print(self.history)
         
-    def ingest_data(self, data, cat_name, id_col, ra_col='_RAJ2000', dec_col='_DEJ2000', count=-1):
+    def add_source(self, ra, dec, flag='', radius='', catalogs=[]):
+        """
+        Add a source to the catalog manually
+        
+        Parameters
+        ----------
+        ra: astropy.units.quantity.Quantity
+            The RA of the source
+        dec: astropy.units.quantity.Quantity
+            The Dec of the source
+        flag: str
+            A flag for the source
+        radius: float
+            The cross match radius for the list of catalogs
+        catalogs: sequence
+            The list of catalogs to search 
+        """
+        # Get the id
+        id = int(len(self.catalog)+1)
+        
+        # Check the coordinates
+        ra = ra.to(q.deg)
+        dec = dec.to(q.deg)
+        datasets = 0
+        
+        # Search the catalogs for this source
+        for cat in catalogs:
+            pass
+        
+        # Add the source to the catalog
+        self.catalog = self.catalog.append([id, ra.value, dec.value, flag, datasets], ignore_index=True)
+        
+    def delete_source(self, id):
+        """
+        Delete a source from the catalog
+        
+        Parameters
+        ----------
+        id: int
+            The id of the source in the catalog
+        """
+        # Set the index
+        self.catalog.set_index('id')
+        
+        # Exclude the unwanted source
+        self.catalog = self.catalog[self.catalog.id!=id]
+        
+        # Remove the records from the catalogs
+        for cat_name in self.catalogs:
+            new_cat = getattr(self, cat_name)[getattr(self, cat_name).source_id!=id]
+            print('{} records removed from {} catalog'.format(int(len(getattr(self, cat_name))-len(new_cat)), cat_name))
+            setattr(self, cat_name, new_cat)
+        
+    def ingest_data(self, data, cat_name, id_col, ra_col='_RAJ2000', dec_col='_DEJ2000', cat_loc='', append=False, count=-1):
         """
         Ingest a data file and regroup sources
         
@@ -62,30 +118,34 @@ class Catalog(object):
             The name of the RA column
         dec_col: str
             The name of the DEC column
+        cat_loc: str
+            The location of the original catalog data
+        append: bool
+            Append the catalog rather than replace
         count: int
             The number of table rows to add
             (This is mainly for testing purposes)
         """
         # Check if the catalog is already ingested
-        if cat_name in self.catalogs:
+        if not append and cat_name in self.catalogs:
             
             print('Catalog {} already ingested.'.format(cat_name))
             
         else:
             
             if isinstance(data, str):
-                path = data
+                cat_loc = cat_loc or data
                 data = pd.read_csv(data, sep='\t', comment='#', engine='python')[:count]
                 
             elif isinstance(data, pd.core.frame.DataFrame):
-                path = type(data)
+                cat_loc = cat_loc or type(data)
                 
             elif isinstance(data, (at.QTable, at.Table)):
-                path = type(data)
+                cat_loc = cat_loc or type(data)
                 data = pd.DataFrame(list(data), columns=data.colnames)
                 
             else:
-                print("Sorry, but I cannot read that data. Try an ascii file path, astropy table, or pandas data frame.")
+                print("Sorry, but I cannot read that data. Try an ascii file cat_loc, astropy table, or pandas data frame.")
                 return
                 
             # Make sure ra and dec are decimal degrees
@@ -104,19 +164,28 @@ class Catalog(object):
                 return
                 
             # Change some names
-            data.insert(0,'catID', ['{}_{}'.format(cat_name,n+1) for n in range(len(data))])
-            data.insert(0,'dec_corr', data['dec'])
-            data.insert(0,'ra_corr', data['ra'])
-            data.insert(0,'source_id', np.nan)
+            try:
+                last = len(getattr(self, cat_name)) if append else 0
+                data.insert(0,'catID', ['{}_{}'.format(cat_name,n+1) for n in range(last,last+len(data))])
+                data.insert(0,'dec_corr', data['dec'])
+                data.insert(0,'ra_corr', data['ra'])
+                data.insert(0,'source_id', np.nan)
             
-            print('Ingesting {} rows from {} catalog...'.format(len(data),cat_name))
+                print('Ingesting {} rows from {} catalog...'.format(len(data),cat_name))
             
-            # Save the raw data as an attribute
-            setattr(self, cat_name, data)
+                # Save the raw data as an attribute
+                if append:
+                    setattr(self, cat_name, getattr(self, cat_name).append(data, ignore_index=True))
                 
-            # Update the history
-            self.history += "\n{}: Catalog {} ingested.".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),cat_name)
-            self.catalogs.update({cat_name:(path,id_col)})
+                else:
+                    setattr(self, cat_name, data)
+                
+                # Update the history
+                self.history += "\n{}: Catalog {} ingested.".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),cat_name)
+                self.catalogs.update({cat_name:{'cat_loc':cat_loc, 'id_col':id_col}})
+                
+            except AttributeError:
+                print("No catalog named '{}'. Set 'append=False' to create it.".format(cat_name))
             
     def inventory(self, source_id):
         """
@@ -146,7 +215,7 @@ class Catalog(object):
                         print('\n{}:'.format(cat_name))
                         at.Table.from_pandas(rows).pprint()
                         
-    def _catalog_check(self, cat_name):
+    def _catalog_check(self, cat_name, append=False):
         """
         Check to see if the name of the ingested catalog is valid
         
@@ -154,11 +223,13 @@ class Catalog(object):
         ----------
         cat_name: str
             The name of the catalog in the Catalog object
+        append: bool
+            Append the catalog rather than replace
         
         Returns
         -------
-        str
-            The catalog name in astroquery format
+        bool
+            True if good catalog name else False
         """
         good = True
         
@@ -168,8 +239,8 @@ class Catalog(object):
             good = False
             
         # Make sure catalog is unique
-        if cat_name in self.catalogs:
-            print('Catalog {} already ingested.'.format(cat_name))
+        if not append and cat_name in self.catalogs:
+            print("Catalog {} already ingested. Set 'append=True' to add more records.".format(cat_name))
             good = False
         
         return good
@@ -196,12 +267,12 @@ class Catalog(object):
             tab = at.Table.from_pandas(self.catalog)
             
             # Cone search Vizier
-            print("Searching SDSS for sources withiin {} of ({}, {}). Please be patient...".format(viz_cat, radius, ra, dec))
+            print("Searching SDSS for sources within {} of ({}, {}). Please be patient...".format(viz_cat, radius, ra, dec))
             crds = coord.SkyCoord(ra=ra, dec=dec, frame='icrs')
             try:
                 data = SDSS.query_region(crds, spectro=True, radius=radius)
             except:
-                print("No data found in SDSS withiin {} of ({}, {}).".format(viz_cat, radius, ra, dec))
+                print("No data found in SDSS within {} of ({}, {}).".format(viz_cat, radius, ra, dec))
                 return
             
             # Ingest the data
@@ -211,7 +282,7 @@ class Catalog(object):
             if len(self.catalogs)>1 and group:
                 self.group_sources(self.xmatch_radius)    
     
-    def Vizier_query(self, viz_cat, cat_name, ra, dec, radius, ra_col='RAJ2000', dec_col='DEJ2000', columns=["**"], group=True, **kwargs):
+    def Vizier_query(self, viz_cat, cat_name, ra, dec, radius, ra_col='RAJ2000', dec_col='DEJ2000', columns=["**"], append=False, group=True, **kwargs):
         """
         Use astroquery to search a catalog for sources within a search cone
         
@@ -227,26 +298,32 @@ class Catalog(object):
             The Dec of the center of the cone search
         radius: astropy.units.quantity.Quantity
             The radius of the cone search
+        ra_col: str
+            The name of the RA column in the raw catalog
+        dec_col: str
+            The name of the Dec column in the raw catalog
+        columns: sequence
+            The list of columns to pass to astroquery
+        append: bool
+            Append the catalog rather than replace
         """
         # Verify the cat_name
-        if self._catalog_check(cat_name):
-            
-            # Prep the current catalog as an astropy.QTable
-            tab = at.Table.from_pandas(self.catalog)
+        if self._catalog_check(cat_name, append=append):
             
             # Cone search Vizier
-            print("Searching {} for sources withiin {} of ({}, {}). Please be patient...".format(viz_cat, radius, ra, dec))
+            print("Searching {} for sources within {} of ({}, {}). Please be patient...".format(viz_cat, radius, ra, dec))
             crds = coord.SkyCoord(ra=ra, dec=dec, frame='icrs')
             V = Vizier(columns=columns, **kwargs)
             V.ROW_LIMIT = -1
+            print(dir(V))
             try:
                 data = V.query_region(crds, radius=radius, catalog=viz_cat)[0]
             except:
-                print("No data found in {} withiin {} of ({}, {}).".format(viz_cat, radius, ra, dec))
+                print("No data found in {} within {} of ({}, {}).".format(viz_cat, radius, ra, dec))
                 return
             
             # Ingest the data
-            self.ingest_data(data, cat_name, 'id', ra_col=ra_col, dec_col=dec_col)
+            self.ingest_data(data, cat_name, 'id', ra_col=ra_col, dec_col=dec_col, cat_loc=viz_cat, append=append)
             
             # Regroup
             if len(self.catalogs)>1 and group:
@@ -319,13 +396,13 @@ class Catalog(object):
             # Clear the source grouping
             cats['oncID'] = np.nan
             cats['oncflag'] = ''
-            self.xmatch_radius = radius or self.xmatch_radius
+            self.xmatch_radius = radius if isinstance(radius,(float,int)) else self.xmatch_radius
             
             # Make a list of the coordinates of each catalog row
             coords = cats[['ra_corr','dec_corr']].values
             
             # Perform DBSCAN to find clusters
-            db = DBSCAN(eps=radius, min_samples=1, n_jobs=-1).fit(coords)
+            db = DBSCAN(eps=self.xmatch_radius, min_samples=1, n_jobs=-1).fit(coords)
             
             # Group the sources
             core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
@@ -338,9 +415,10 @@ class Catalog(object):
             unique_coords = np.asarray([np.mean(coords[source_ids==id], axis=0) for id in list(set(source_ids))])
             
             # Generate a source catalog
-            self.catalog = pd.DataFrame(columns=('id','ra','dec','flag'))
+            self.catalog = pd.DataFrame(columns=('id','ra','dec','flag','datasets'))
             self.catalog['id'] = unique_source_ids
             self.catalog[['ra','dec']] = unique_coords
+            self.catalog['flag'] = [None]*len(unique_source_ids)
             # self.catalog['flag'] = ['d{}'.format(i) if i>1 else '' for i in Counter(source_ids).values()]
             self.catalog['datasets'] = Counter(source_ids).values()
             
@@ -531,3 +609,46 @@ def progress_meter(progress):
     """
     sys.stdout.write("\rloading... %.1f%%" % progress)
     sys.stdout.flush()
+    
+def default_rename_columns(cat_name):
+    """
+    Get the default column names from astroquery.vizier.Vizier to astrodb column names
+    
+    Parameters
+    ----------
+    cat_name: str
+        The name of the catalog
+    
+    Returns
+    -------
+    dict
+        The dictionary to pass to astrodb.add_data()
+    """
+    defaults = {'2MASS':{'JD':'epoch', 'Qflg':'flags', 'Jmag':'2MASS.J', 'Hmag':'2MASS.H', 'Kmag':'2MASS.Ks', 'e_Jmag':'2MASS.J_unc', 'e_Hmag':'2MASS.H_unc', 'e_Kmag':'2MASS.Ks_unc'},
+                'WISE':{'qph':'flags', 'W1mag':'WISE.W1', 'W2mag':'WISE.W2', 'W3mag':'WISE.W3', 'W4mag':'WISE.W4', 'e_W1mag':'WISE.W1_unc', 'e_W2mag':'WISE.W2_unc', 'e_W3mag':'WISE.W3_unc', 'e_W4mag':'WISE.W4_unc'},
+                'SDSS':{'ObsDate':'epoch', 'flags':'oflags', 'Q':'flags', 'umag':'SDSS.u', 'gmag':'SDSS.g', 'rmag':'SDSS.r', 'imag':'SDSS.i', 'zmag':'SDSS.z', 'e_umag':'SDSS.u_unc', 'e_gmag':'SDSS.g_unc', 'e_rmag':'SDSS.r_unc', 'e_imag':'SDSS.i_unc', 'e_zmag':'SDSS.z_unc'},
+                'TGAS':{'Epoch':'epoch', 'Plx':'parallax', 'e_Plx':'parallax_unc'}}
+                
+    return defaults[cat_name]
+     
+def default_column_fill(cat_name):
+    """
+    Get the default column fill values for astrodb column names
+    
+    Parameters
+    ----------
+    cat_name: str
+        The name of the catalog
+    
+    Returns
+    -------
+    dict
+        The dictionary to pass to astrodb.add_data()
+    """
+    defaults = {'2MASS':{'publication_shortname':'Cutr03', 'telescope_id':2, 'instrument_id':5, 'system_id':2},
+                'WISE':{'publication_shortname':'Cutr13', 'telescope_id':3, 'instrument_id':6, 'system_id':2},
+                'SDSS':{'publication_shortname':'Alam15', 'telescope_id':6, 'instrument_id':9, 'system_id':2},
+                'TGAS':{'publication_shortname':'Gaia16', 'telescope_id':4, 'instrument_id':7, 'system_id':1}}
+                
+    return defaults[cat_name]
+    
