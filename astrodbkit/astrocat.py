@@ -33,7 +33,7 @@ class Catalog(object):
             The name of the database
         """
         self.name = name
-        self.catalog = pd.DataFrame(columns=('id','ra','dec','flag','datasets'))
+        self.sources = pd.DataFrame(columns=('id','ra','dec','flag','datasets'))
         self.n_sources = 0
         self.history = "{}: Database created".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         self.catalogs = {}
@@ -49,7 +49,7 @@ class Catalog(object):
         """
         print(self.history)
         
-    def add_source(self, ra, dec, flag='', radius=10*q.arcsec):
+    def add_source(self, ra, dec, flag='', radius=10*q.arcsec, catalogs={}):
         """
         Add a source to the catalog manually and find data in existing catalogs
         
@@ -63,9 +63,12 @@ class Catalog(object):
             A flag for the source
         radius: float
             The cross match radius for the list of catalogs
+        catalogs: dict
+            Additional catalogs to search, e.g.
+            catalogs={'TMASS':{'cat_loc':'II/246/out', 'id_col':'id', 'ra_col':'RAJ2000', 'dec_col':'DEJ2000'}}
         """
-        # Get the id
-        id = int(len(self.catalog)+1)
+        # Set the id
+        self.n_sources += 1
         
         # Check the coordinates
         ra = ra.to(q.deg)
@@ -74,10 +77,16 @@ class Catalog(object):
         
         # Search the catalogs for this source
         for cat_name,params in self.catalogs.items():
-            self.Vizier_query(params['cat_loc'], cat_name, ra, dec, radius, ra_col=params['ra_col'], dec_col=params['dec_col'], append=True, group=False)
+            self.Vizier_query(params['cat_loc'], cat_name, ra, dec, radius, ra_col=params['ra_col'], dec_col=params['dec_col'], append=True, force_id=self.n_sources, group=False)
+            
+        # Search additional catalogs
+        for cat_name,params in catalogs.items():
+            if cat_name not in self.catalogs:
+                self.Vizier_query(params['cat_loc'], cat_name, ra, dec, radius, ra_col=params['ra_col'], dec_col=params['dec_col'], force_id=self.n_sources, group=False)
             
         # Add the source to the catalog
-        self.catalog = self.catalog.append([id, ra.value, dec.value, flag, datasets], ignore_index=True)
+        new_cat = pd.DataFrame([[self.n_sources, ra.value, dec.value, flag, datasets]], columns=self.sources.columns)
+        self.sources = self.sources.append(new_cat, ignore_index=True)
         
     def delete_source(self, id):
         """
@@ -89,10 +98,10 @@ class Catalog(object):
             The id of the source in the catalog
         """
         # Set the index
-        self.catalog.set_index('id')
+        self.sources.set_index('id')
         
         # Exclude the unwanted source
-        self.catalog = self.catalog[self.catalog.id!=id]
+        self.sources = self.sources[self.sources.id!=id]
         
         # Remove the records from the catalogs
         for cat_name in self.catalogs:
@@ -100,7 +109,7 @@ class Catalog(object):
             print('{} records removed from {} catalog'.format(int(len(getattr(self, cat_name))-len(new_cat)), cat_name))
             setattr(self, cat_name, new_cat)
         
-    def ingest_data(self, data, cat_name, id_col, ra_col='_RAJ2000', dec_col='_DEJ2000', cat_loc='', append=False, count=-1):
+    def ingest_data(self, data, cat_name, id_col, ra_col='_RAJ2000', dec_col='_DEJ2000', cat_loc='', append=False, force_id='', count=-1):
         """
         Ingest a data file and regroup sources
         
@@ -120,6 +129,8 @@ class Catalog(object):
             The location of the original catalog data
         append: bool
             Append the catalog rather than replace
+        force_id: int
+            Assigns a specific id in the catalog
         count: int
             The number of table rows to add
             (This is mainly for testing purposes)
@@ -167,7 +178,7 @@ class Catalog(object):
                 data.insert(0,'catID', ['{}_{}'.format(cat_name,n+1) for n in range(last,last+len(data))])
                 data.insert(0,'dec_corr', data['dec'])
                 data.insert(0,'ra_corr', data['ra'])
-                data.insert(0,'source_id', np.nan)
+                data.insert(0,'source_id', force_id or np.nan)
             
                 print('Ingesting {} rows from {} catalog...'.format(len(data),cat_name))
             
@@ -205,7 +216,7 @@ class Catalog(object):
             else:
             
                 print('Source:')
-                print(at.Table.from_pandas(self.catalog[self.catalog['id']==source_id]).pprint())
+                print(at.Table.from_pandas(self.sources[self.sources['id']==source_id]).pprint())
                 for cat_name in self.catalogs:
                     cat = getattr(self, cat_name)
                     rows = cat[cat['source_id']==source_id]
@@ -262,7 +273,7 @@ class Catalog(object):
         if self._catalog_check(cat_name):
             
             # Prep the current catalog as an astropy.QTable
-            tab = at.Table.from_pandas(self.catalog)
+            tab = at.Table.from_pandas(self.sources)
             
             # Cone search Vizier
             print("Searching SDSS for sources within {} of ({}, {}). Please be patient...".format(viz_cat, radius, ra, dec))
@@ -280,7 +291,7 @@ class Catalog(object):
             if len(self.catalogs)>1 and group:
                 self.group_sources(self.xmatch_radius)    
     
-    def Vizier_query(self, viz_cat, cat_name, ra, dec, radius, ra_col='RAJ2000', dec_col='DEJ2000', columns=["**"], append=False, group=True, **kwargs):
+    def Vizier_query(self, viz_cat, cat_name, ra, dec, radius, ra_col='RAJ2000', dec_col='DEJ2000', columns=["**"], append=False, force_id='', group=True, **kwargs):
         """
         Use astroquery to search a catalog for sources within a search cone
         
@@ -304,6 +315,8 @@ class Catalog(object):
             The list of columns to pass to astroquery
         append: bool
             Append the catalog rather than replace
+        force_id: int
+            Assigns a specific id in the catalog
         """
         # Verify the cat_name
         if self._catalog_check(cat_name, append=append):
@@ -321,7 +334,7 @@ class Catalog(object):
                 return
             
             # Ingest the data
-            self.ingest_data(data, cat_name, 'id', ra_col=ra_col, dec_col=dec_col, cat_loc=viz_cat, append=append)
+            self.ingest_data(data, cat_name, 'id', ra_col=ra_col, dec_col=dec_col, cat_loc=viz_cat, append=append, force_id=force_id)
             
             # Regroup
             if len(self.catalogs)>1 and group:
@@ -329,7 +342,7 @@ class Catalog(object):
             
     def Vizier_xmatch(self, viz_cat, cat_name, ra_col='_RAJ2000', dec_col='_DEJ2000', radius='', group=True):
         """
-        Use astroquery to pull in and cross match a catalog with sources in self.catalog
+        Use astroquery to pull in and cross match a catalog with sources in self.sources
         
         Parameters
         ----------
@@ -341,7 +354,7 @@ class Catalog(object):
             The matching radius
         """
         # Make sure sources have been grouped
-        if self.catalog.empty:
+        if self.sources.empty:
             print('Please run group_sources() before cross matching.')
             return
             
@@ -351,7 +364,7 @@ class Catalog(object):
             viz_cat = "vizier:{}".format(viz_cat)
             
             # Prep the current catalog as an astropy.QTable
-            tab = at.Table.from_pandas(self.catalog)
+            tab = at.Table.from_pandas(self.sources)
             
             # Crossmatch with Vizier
             print("Cross matching {} sources with {} catalog. Please be patient...".format(len(tab), viz_cat))
@@ -413,12 +426,12 @@ class Catalog(object):
             unique_coords = np.asarray([np.mean(coords[source_ids==id], axis=0) for id in list(set(source_ids))])
             
             # Generate a source catalog
-            self.catalog = pd.DataFrame(columns=('id','ra','dec','flag','datasets'))
-            self.catalog['id'] = unique_source_ids
-            self.catalog[['ra','dec']] = unique_coords
-            self.catalog['flag'] = [None]*len(unique_source_ids)
-            # self.catalog['flag'] = ['d{}'.format(i) if i>1 else '' for i in Counter(source_ids).values()]
-            self.catalog['datasets'] = Counter(source_ids).values()
+            self.sources = pd.DataFrame(columns=('id','ra','dec','flag','datasets'))
+            self.sources['id'] = unique_source_ids
+            self.sources[['ra','dec']] = unique_coords
+            self.sources['flag'] = [None]*len(unique_source_ids)
+            # self.sources['flag'] = ['d{}'.format(i) if i>1 else '' for i in Counter(source_ids).values()]
+            self.sources['datasets'] = Counter(source_ids).values()
             
             # Update history
             self.history += "\n{}: Catalog grouped with radius {} arcsec.".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), self.xmatch_radius)
@@ -495,7 +508,7 @@ class Catalog(object):
         DB = joblib.load(path)
         
         # Load the attributes
-        self.catalog   = DB.catalog
+        self.sources   = DB.catalog
         self.n_sources = DB.n_sources
         self.name      = DB.name
         self.history   = DB.history
@@ -535,11 +548,11 @@ class Catalog(object):
         else:
             
             # First, remove any previous catalog correction
-            self.catalog.loc[self.catalog['cat_name']==cat_name, 'ra_corr'] = self.catalog.loc[self.catalog['cat_name']==cat_name, '_RAJ2000']
-            self.catalog.loc[self.catalog['cat_name']==cat_name, 'dec_corr'] = self.catalog.loc[self.catalog['cat_name']==cat_name, '_DEJ2000']
+            self.sources.loc[self.sources['cat_name']==cat_name, 'ra_corr'] = self.sources.loc[self.sources['cat_name']==cat_name, '_RAJ2000']
+            self.sources.loc[self.sources['cat_name']==cat_name, 'dec_corr'] = self.sources.loc[self.sources['cat_name']==cat_name, '_DEJ2000']
             
             # Copy the catalog
-            onc_gr = self.catalog.copy()
+            onc_gr = self.sources.copy()
             
             # restrict to one-to-one matches, sort by oncID so that matches are paired
             o2o_new = onc_gr.loc[(onc_gr['oncflag'].str.contains('o')) & (onc_gr['cat_name'] == cat_name) ,:].sort_values('oncID')
@@ -582,8 +595,8 @@ class Catalog(object):
                 
                 # Update the coordinates of the appropriate sources
                 print('Shifting {} sources by {}" in RA and {}" in Dec...'.format(cat_name,mu_ra,mu_dec))
-                self.catalog.loc[self.catalog['cat_name']==cat_name, 'ra_corr'] += mu_ra
-                self.catalog.loc[self.catalog['cat_name']==cat_name, 'dec_corr'] += mu_dec
+                self.sources.loc[self.sources['cat_name']==cat_name, 'ra_corr'] += mu_ra
+                self.sources.loc[self.sources['cat_name']==cat_name, 'dec_corr'] += mu_dec
                 
                 # Update history
                 now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
