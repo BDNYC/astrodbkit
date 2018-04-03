@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # encoding: utf-8
-# Author: Joe Filippazzo, jfilippazzo@stsci.edu
+# Authors: Joe Filippazzo, David Rodriguez
 
 from __future__ import absolute_import
 from __future__ import division
@@ -232,7 +232,7 @@ class Database:
         else:
             print('Please provide a the path to a file or a dictionary of tables.')
 
-    def __repr__(self):
+    def __str__(self):
         self.info()
         print("\nFor a quick summary of how to use astrodb.Database, type db.help(), \n"
               "where 'db' corresponds to the name of the astrodb.Database instance.")
