@@ -49,9 +49,9 @@ class Catalog(object):
         """
         print(self.history)
         
-    def add_source(self, ra, dec, flag='', radius='', catalogs=[]):
+    def add_source(self, ra, dec, flag='', radius=10*q.arcsec):
         """
-        Add a source to the catalog manually
+        Add a source to the catalog manually and find data in existing catalogs
         
         Parameters
         ----------
@@ -63,8 +63,6 @@ class Catalog(object):
             A flag for the source
         radius: float
             The cross match radius for the list of catalogs
-        catalogs: sequence
-            The list of catalogs to search 
         """
         # Get the id
         id = int(len(self.catalog)+1)
@@ -75,9 +73,9 @@ class Catalog(object):
         datasets = 0
         
         # Search the catalogs for this source
-        for cat in catalogs:
-            pass
-        
+        for cat_name,params in self.catalogs.items():
+            self.Vizier_query(params['cat_loc'], cat_name, ra, dec, radius, ra_col=params['ra_col'], dec_col=params['dec_col'], append=True, group=False)
+            
         # Add the source to the catalog
         self.catalog = self.catalog.append([id, ra.value, dec.value, flag, datasets], ignore_index=True)
         
@@ -182,7 +180,7 @@ class Catalog(object):
                 
                 # Update the history
                 self.history += "\n{}: Catalog {} ingested.".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),cat_name)
-                self.catalogs.update({cat_name:{'cat_loc':cat_loc, 'id_col':id_col}})
+                self.catalogs.update({cat_name:{'cat_loc':cat_loc, 'id_col':id_col, 'ra_col':ra_col, 'dec_col':dec_col}})
                 
             except AttributeError:
                 print("No catalog named '{}'. Set 'append=False' to create it.".format(cat_name))
@@ -315,7 +313,7 @@ class Catalog(object):
             crds = coord.SkyCoord(ra=ra, dec=dec, frame='icrs')
             V = Vizier(columns=columns, **kwargs)
             V.ROW_LIMIT = -1
-            print(dir(V))
+            
             try:
                 data = V.query_region(crds, radius=radius, catalog=viz_cat)[0]
             except:
