@@ -12,7 +12,7 @@ import astropy.table as at
 import astropy.coordinates as coord
 import datetime
 from collections import Counter
-from scipy.stats import norm
+# from scipy.stats import norm
 from astroquery.vizier import Vizier
 from astroquery.xmatch import XMatch
 from astropy.coordinates import SkyCoord
