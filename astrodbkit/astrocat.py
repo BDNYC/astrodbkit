@@ -11,13 +11,16 @@ import astropy.units as q
 import astropy.table as at
 import astropy.coordinates as coord
 import datetime
-from sklearn.cluster import DBSCAN
 from collections import Counter
 from scipy.stats import norm
 from astroquery.vizier import Vizier
 from astroquery.xmatch import XMatch
-from sklearn.externals import joblib
 from astropy.coordinates import SkyCoord
+try:
+    from sklearn.cluster import DBSCAN
+    from sklearn.externals import joblib
+except ImportError:
+    pass
 
 Vizier.ROW_LIMIT = -1
 
