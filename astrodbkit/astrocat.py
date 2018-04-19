@@ -16,6 +16,9 @@ from scipy.stats import norm
 from astroquery.vizier import Vizier
 from astroquery.xmatch import XMatch
 from astropy.coordinates import SkyCoord
+import pandas as pd
+from bokeh.plotting import ColumnDataSource, figure, output_file, show
+from bokeh.io import output_notebook, show
 try:
     from sklearn.cluster import DBSCAN
     from sklearn.externals import joblib
@@ -51,6 +54,39 @@ class Catalog(object):
         Print the history
         """
         print(self.history)
+        
+    def plot(self, cat_name, x, y, **kwargs):
+        """
+        Plot the named columns of the given attribute if the value is a pandas.DataFrame
+        
+        Parameters
+        ----------
+        cat_name: str
+            The attribute name
+        x: str
+            The name of the column to plot on the x-axis
+        y: str
+            The name of the column to plot on the y-axis
+        """
+        # Get the attribute
+        if isinstance(cat_name, str) and hasattr(self, cat_name):
+            attr = getattr(self, cat_name)
+        else:
+            print('No attribute named',cat_name)
+            return
+        
+        # Make sure the attribute is a DataFrame
+        if isinstance(attr, pd.core.frame.DataFrame):
+            ds = ColumnDataSource(attr)
+            myPlot = figure()
+            myPlot.xaxis.axis_label = x
+            myPlot.yaxis.axis_label = y            
+            myPlot.circle(x, y, source=ds)
+            plt = show(myPlot, notebook_handle=True)
+        
+        else:
+            print(cat_name,'is not a Pandas DataFrame!')
+            return
         
     def add_source(self, ra, dec, flag='', radius=10*q.arcsec, catalogs={}):
         """
@@ -199,7 +235,7 @@ class Catalog(object):
             except AttributeError:
                 print("No catalog named '{}'. Set 'append=False' to create it.".format(cat_name))
             
-    def inventory(self, source_id):
+    def inventory(self, source_id, return_inventory=False):
         """
         Look at the inventory for a given source
         
@@ -217,15 +253,30 @@ class Catalog(object):
                 print('Please enter an integer between 1 and',self.n_sources)
             
             else:
-            
-                print('Source:')
-                print(at.Table.from_pandas(self.sources[self.sources['id']==source_id]).pprint())
+                
+                # Empty inventory
+                inv = {}
+                
+                # Add the record from the source table
+                inv['source'] = at.Table.from_pandas(self.sources[self.sources['id']==source_id])
+                
                 for cat_name in self.catalogs:
                     cat = getattr(self, cat_name)
                     rows = cat[cat['source_id']==source_id]
                     if not rows.empty:
-                        print('\n{}:'.format(cat_name))
-                        at.Table.from_pandas(rows).pprint()
+                        inv[cat_name] = at.Table.from_pandas(rows)
+                        
+                if return_inventory:
+                    
+                    # Return the data
+                    return inv
+                    
+                else:
+                    
+                    # Print out the data in each catalog
+                    for cat_name, data in inv.items():
+                        print('\n',cat_name,':')
+                        data.pprint()
                         
     def _catalog_check(self, cat_name, append=False):
         """
