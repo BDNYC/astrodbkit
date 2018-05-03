@@ -3,4 +3,3 @@ astropy
 matplotlib
 pandas
 requests
-astroquery
