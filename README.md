@@ -25,3 +25,4 @@ To use the BDNYC Database of brown dwarf data, download the latest data release 
 
 [![astropy](http://img.shields.io/badge/powered%20by-AstroPy-orange.svg?style=flat)](http://www.astropy.org/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.1155843.svg)](https://doi.org/10.5281/zenodo.1155843)
+[![Coverage Status](https://coveralls.io/repos/github/BDNYC/astrodbkit/badge.svg?branch=master)](https://coveralls.io/github/BDNYC/astrodbkit?branch=master)
