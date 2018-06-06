@@ -383,10 +383,14 @@ class Catalog(object):
             
             try:
                 data = V.query_region(crds, radius=radius, catalog=viz_cat)[0]
+                
+                # Add the link to original record
+                data['record'] = ['http://vizier.u-strasbg.fr/viz-bin/VizieR-5?-ref=VIZ5b17f9660734&-out.add=.&-source={}&recno={}'.format(viz_cat,n+1) for n in range(len(data))]
+                
             except:
                 print("No data found in {} within {} of ({}, {}).".format(viz_cat, radius, ra, dec))
                 return
-            
+                
             # Ingest the data
             self.ingest_data(data, cat_name, 'id', ra_col=ra_col, dec_col=dec_col, cat_loc=viz_cat, append=append, force_id=force_id)
             
@@ -692,7 +696,7 @@ def default_rename_columns(cat_name):
     defaults = {'2MASS':{'JD':'epoch', 'Qflg':'flags', 'Jmag':'2MASS.J', 'Hmag':'2MASS.H', 'Kmag':'2MASS.Ks', 'e_Jmag':'2MASS.J_unc', 'e_Hmag':'2MASS.H_unc', 'e_Kmag':'2MASS.Ks_unc'},
                 'WISE':{'qph':'flags', 'W1mag':'WISE.W1', 'W2mag':'WISE.W2', 'W3mag':'WISE.W3', 'W4mag':'WISE.W4', 'e_W1mag':'WISE.W1_unc', 'e_W2mag':'WISE.W2_unc', 'e_W3mag':'WISE.W3_unc', 'e_W4mag':'WISE.W4_unc'},
                 'SDSS':{'ObsDate':'epoch', 'flags':'oflags', 'Q':'flags', 'umag':'SDSS.u', 'gmag':'SDSS.g', 'rmag':'SDSS.r', 'imag':'SDSS.i', 'zmag':'SDSS.z', 'e_umag':'SDSS.u_unc', 'e_gmag':'SDSS.g_unc', 'e_rmag':'SDSS.r_unc', 'e_imag':'SDSS.i_unc', 'e_zmag':'SDSS.z_unc'},
-                'TGAS':{'Epoch':'epoch', 'Plx':'parallax', 'e_Plx':'parallax_unc'}}
+                'GAIA':{'Epoch':'epoch', 'Plx':'parallax', 'e_Plx':'parallax_unc', 'Gmag':'Gaia.G', 'e_Gmag':'Gaia.G_unc', 'BPmag':'Gaia.BP', 'e_BPmag':'Gaia.BP_unc', 'RPmag':'Gaia.RP', 'e_RPmag':'Gaia.RP_unc'}}
                 
     return defaults[cat_name]
      
@@ -713,7 +717,7 @@ def default_column_fill(cat_name):
     defaults = {'2MASS':{'publication_shortname':'Cutr03', 'telescope_id':2, 'instrument_id':5, 'system_id':2},
                 'WISE':{'publication_shortname':'Cutr13', 'telescope_id':3, 'instrument_id':6, 'system_id':2},
                 'SDSS':{'publication_shortname':'Alam15', 'telescope_id':6, 'instrument_id':9, 'system_id':2},
-                'TGAS':{'publication_shortname':'Gaia16', 'telescope_id':4, 'instrument_id':7, 'system_id':1}}
+                'GAIA':{'publication_shortname':'Gaia18', 'telescope_id':4, 'instrument_id':7, 'system_id':1}}
                 
     return defaults[cat_name]
     
