@@ -19,11 +19,8 @@ from astropy.coordinates import SkyCoord
 import pandas as pd
 from bokeh.plotting import ColumnDataSource, figure, output_file, show
 from bokeh.io import output_notebook, show
-try:
-    from sklearn.cluster import DBSCAN
-    from sklearn.externals import joblib
-except ImportError:
-    pass
+from sklearn.cluster import DBSCAN
+from sklearn.externals import joblib
 
 Vizier.ROW_LIMIT = -1
 
@@ -39,7 +36,7 @@ class Catalog(object):
             The name of the database
         """
         self.name = name
-        self.sources = pd.DataFrame(columns=('id','ra','dec','flag','datasets'))
+        self.sources = pd.DataFrame(columns=('id', 'ra', 'dec', 'flag', 'datasets'))
         self.n_sources = 0
         self.history = "{}: Database created".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         self.catalogs = {}
@@ -148,7 +145,7 @@ class Catalog(object):
             print('{} records removed from {} catalog'.format(int(len(getattr(self, cat_name))-len(new_cat)), cat_name))
             setattr(self, cat_name, new_cat)
         
-    def ingest_data(self, data, cat_name, id_col, ra_col='_RAJ2000', dec_col='_DEJ2000', cat_loc='', append=False, force_id='', count=-1):
+    def ingest_data(self, data, cat_name, id_col, ra_col='_RAJ2000', dec_col='_DEJ2000', cat_loc='', append=False, delimiter='\t', force_id='', count=-1):
         """
         Ingest a data file and regroup sources
         
@@ -183,7 +180,7 @@ class Catalog(object):
             
             if isinstance(data, str):
                 cat_loc = cat_loc or data
-                data = pd.read_csv(data, sep='\t', comment='#', engine='python')[:count]
+                data = pd.read_csv(data, sep=delimiter, comment='#', engine='python')[:count]
                 
             elif isinstance(data, pd.core.frame.DataFrame):
                 cat_loc = cat_loc or type(data)
@@ -345,7 +342,7 @@ class Catalog(object):
             if len(self.catalogs)>1 and group:
                 self.group_sources(self.xmatch_radius)    
     
-    def Vizier_query(self, viz_cat, cat_name, ra, dec, radius, ra_col='RAJ2000', dec_col='DEJ2000', columns=["**"], append=False, force_id='', group=True, **kwargs):
+    def Vizier_query(self, viz_cat, cat_name, ra, dec, radius, ra_col='RAJ2000', dec_col='DEJ2000', columns=["**", "+_r"], append=False, force_id='', group=True, nrows=-1, **kwargs):
         """
         Use astroquery to search a catalog for sources within a search cone
         
@@ -379,7 +376,7 @@ class Catalog(object):
             print("Searching {} for sources within {} of ({}, {}). Please be patient...".format(viz_cat, radius, ra, dec))
             crds = coord.SkyCoord(ra=ra, dec=dec, frame='icrs')
             V = Vizier(columns=columns, **kwargs)
-            V.ROW_LIMIT = -1
+            V.ROW_LIMIT = nrows
             
             try:
                 data = V.query_region(crds, radius=radius, catalog=viz_cat)[0]
