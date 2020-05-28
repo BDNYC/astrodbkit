@@ -232,12 +232,6 @@ class Database:
         else:
             print('Please provide a the path to a file or a dictionary of tables.')
 
-    def __str__(self):
-        self.info()
-        print("\nFor a quick summary of how to use astrodb.Database, type db.help(), \n"
-              "where 'db' corresponds to the name of the astrodb.Database instance.")
-        return ''
-
     def add_changelog(self, user="", mod_tables="", user_desc=""):
         """
         Add an entry to the changelog table. This should be run when changes or edits are done to the database.
