@@ -53,7 +53,7 @@ def create_database(dbpath, schema='', overwrite=True):
         
         # Load the schema if given
         if schema:
-            os.system("cat {} | sqlite3 {}".format(schema,dbpath))
+            os.system("cat {} | sqlite3 {}".format(schema, dbpath))
             
         # Otherwise just make an empty SOURCES table
         else:
@@ -320,8 +320,16 @@ class Database:
             # Rename columns
             if isinstance(rename_columns,str):
                 rename_columns = astrocat.default_rename_columns(rename_columns)
+                
+            try_again = []
             for input_name,new_name in rename_columns.items():
-                data.rename_column(input_name,new_name)
+                try:
+                    data.rename_column(input_name,new_name)
+                except KeyError:
+                    try_again.append(input_name)
+                    
+            for input_name in try_again:
+                data.rename_column(input_name,rename_columns[input_name])
                 
             # Add column fills
             if isinstance(column_fill,str):
