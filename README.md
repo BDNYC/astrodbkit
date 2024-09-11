@@ -1,3 +1,6 @@
+# This package is DEPRECATED 
+New package: https://github.com/astrodbtoolkit/AstrodbKit2
+
 # astrodbkit
 
 ## Installation
